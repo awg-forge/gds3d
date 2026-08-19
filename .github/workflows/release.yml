@@ -122,8 +122,8 @@ jobs:
           mkdir -p dist/installers
           deb_path="$(find target -type f -name '*.deb' | head -n 1)"
           rpm_path="$(find target -type f -name '*.rpm' | head -n 1)"
-          cp "$deb_path" "dist/installers/GDS3D-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}-${{ matrix.suffix }}.deb"
-          cp "$rpm_path" "dist/installers/GDS3D-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}-${{ matrix.suffix }}.rpm"
+          cp "$deb_path" "dist/installers/gds3d-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}-${{ matrix.suffix }}.deb"
+          cp "$rpm_path" "dist/installers/gds3d-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}-${{ matrix.suffix }}.rpm"
 
       - name: Package macOS
         if: matrix.platform == 'macos'
@@ -132,9 +132,9 @@ jobs:
           cargo bundle --release --target "${{ matrix.target }}"
 
           mkdir -p dist/installers
-          app_path="$(find target -type d -name 'GDS3D.app' | head -n 1)"
+          app_path="$(find target -type d -name 'gds3d.app' | head -n 1)"
           ditto -c -k --sequesterRsrc --keepParent "$app_path" \
-            "dist/installers/GDS3D-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}-${{ matrix.suffix }}.app.zip"
+            "dist/installers/gds3d-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}-${{ matrix.suffix }}.app.zip"
 
       - name: Package Windows
         if: matrix.platform == 'windows'

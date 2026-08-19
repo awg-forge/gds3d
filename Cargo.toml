@@ -1,13 +1,13 @@
 [package]
 name = "gds3d"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 authors = ["AWGForge <sjh855210@qq.com>"]
 description = "A 3D visualization editor for GDS layouts."
 license = "MIT"
 
 [package.metadata.bundle]
-name = "GDS3D"
+name = "gds3d"
 identifier = "io.github.kercyding.gds3d"
 short_description = "A 3D visualization editor for GDS layouts."
 copyright = "Copyright © 2026 KercyDing"

@@ -30,7 +30,7 @@ const SETTINGS_COLUMN_GAP: f32 = 8.0;
 const SETTINGS_CONTROL_WIDTH: f32 = 112.0;
 const EXPORT_CONTROL_WIDTH: f32 = 118.0;
 const EXPORT_WINDOW_PADDING: f32 = 12.0;
-const SETTINGS_DIR_NAME: &str = "GDS3D";
+const SETTINGS_DIR_NAME: &str = "gds3d";
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const UI_FONT_SIZE_DEFAULT: f32 = 14.0;
 const UI_FONT_SIZE_MIN: f32 = 12.0;
@@ -334,7 +334,7 @@ impl Gds3dApp {
 
     fn open_project(&mut self) {
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("GDS3D archive", &["gds3d"])
+            .add_filter("gds3d archive", &["gds3d"])
             .pick_file()
         else {
             return;
@@ -358,7 +358,7 @@ impl Gds3dApp {
 
     fn export_project(&mut self) {
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("GDS3D archive", &["gds3d"])
+            .add_filter("gds3d archive", &["gds3d"])
             .set_file_name("project.gds3d")
             .save_file()
         else {

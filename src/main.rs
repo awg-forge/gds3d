@@ -14,7 +14,7 @@ const INITIAL_WINDOW_SIZE: [f32; 2] = [1280.0, 820.0];
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("GDS3D")
+            .with_title("gds3d")
             .with_inner_size(INITIAL_WINDOW_SIZE)
             .with_icon(
                 eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
@@ -28,7 +28,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "GDS3D",
+        "gds3d",
         options,
         Box::new(|cc| Ok(Box::new(app::Gds3dApp::new(cc)))),
     )

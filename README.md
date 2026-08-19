@@ -1,10 +1,10 @@
-# GDS3D
+# gds3d
 
 A 3D visualization editor for GDS layouts built with [egui](https://github.com/emilk/egui).
 
-GDS3D imports GDS files, builds an interactive 3D scene, and exports figures or project files.
+gds3d imports GDS files, builds an interactive 3D scene, and exports figures or project files.
 
-<img src="assets/view.png" alt="GDS3D viewport" width="720">
+<img src="assets/view.png" alt="gds3d viewport" width="720">
 
 ## Develop
 

@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "0.1.3"
+#define AppVersion "0.1.4"
 #endif
 
 #ifndef AppArch
@@ -24,15 +24,15 @@
 
 [Setup]
 AppId={{B7B7C5DF-EE40-4D67-8D99-9DD904A59D2C}
-AppName=GDS3D
+AppName=gds3d
 AppVersion={#AppVersion}
-AppPublisher=GDS3D
-DefaultDirName={autopf}\GDS3D
-DefaultGroupName=GDS3D
+AppPublisher=gds3d
+DefaultDirName={autopf}\gds3d
+DefaultGroupName=gds3d
 DisableProgramGroupPage=yes
 LicenseFile={#LicenseFile}
 OutputDir={#OutputDir}
-OutputBaseFilename=GDS3D-{#AppVersion}-windows-{#AppArch}-setup
+OutputBaseFilename=gds3d-{#AppVersion}-windows-{#AppArch}-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -50,8 +50,8 @@ Source: "{#SourceDir}\gds3d.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\GDS3D"; Filename: "{app}\gds3d.exe"; IconFilename: "{app}\icon.ico"
-Name: "{autodesktop}\GDS3D"; Filename: "{app}\gds3d.exe"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
+Name: "{group}\gds3d"; Filename: "{app}\gds3d.exe"; IconFilename: "{app}\icon.ico"
+Name: "{autodesktop}\gds3d"; Filename: "{app}\gds3d.exe"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\gds3d.exe"; Description: "{cm:LaunchProgram,GDS3D}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\gds3d.exe"; Description: "{cm:LaunchProgram,gds3d}"; Flags: nowait postinstall skipifsilent

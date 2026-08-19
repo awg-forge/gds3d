@@ -188,7 +188,7 @@ pub fn write_pdf_report(
     }
 
     let rows = pdf_table_rows(scene);
-    let mut doc = PdfDocument::new("GDS3D Export");
+    let mut doc = PdfDocument::new("gds3d Export");
     let image = RawImage::decode_from_bytes(png, &mut Vec::new())
         .map_err(|err| anyhow::anyhow!("decode PDF preview image: {err}"))?;
     let image_id = doc.add_image(&image);

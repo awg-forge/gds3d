@@ -437,6 +437,7 @@ fn pdf_image_page(image_id: XObjectId, image_width: u32, image_height: u32) -> P
                 scale_x: Some(scale),
                 scale_y: Some(scale),
                 dpi: Some(PDF_IMAGE_DPI),
+                no_auto_scale: false,
             },
         },
     ];

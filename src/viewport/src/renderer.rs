@@ -167,7 +167,9 @@ pub(crate) fn render_view_rgba(
         .map_err(|err| format!("map export readback: {err}"))?;
 
     let texture_format = render_state.target_format;
-    let mapped = readback.get_mapped_range(..);
+    let mapped = readback
+        .get_mapped_range(..)
+        .map_err(|err| format!("access export readback: {err}"))?;
     let rgba_size = usize::try_from(u64::from(row_bytes) * u64::from(height))
         .map_err(|_| "export image is too large".to_owned())?;
     let row_stride =
@@ -304,7 +306,7 @@ impl WgpuViewport {
             vertex: wgpu::VertexState {
                 module: &overlay_shader,
                 entry_point: Some("vs_main"),
-                buffers: &[OverlayVertex::layout()],
+                buffers: &[Some(OverlayVertex::layout())],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -468,7 +470,7 @@ fn create_viewport_pipeline(
         vertex: wgpu::VertexState {
             module: shader,
             entry_point: Some("vs_main"),
-            buffers: &[ViewportVertex::layout()],
+            buffers: &[Some(ViewportVertex::layout())],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {

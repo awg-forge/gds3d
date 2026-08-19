@@ -435,7 +435,7 @@ fn parse_gds_layers(path: &Path) -> anyhow::Result<ParsedGdsLayers> {
                     cell,
                     boundary.layer,
                     boundary.datatype,
-                    polygon_from_points(GdsPoint::iter_xy(boundary.xy), coordinate_scale),
+                    polygon_from_points(GdsPoint::iter_xy(boundary.xy.as_ref()), coordinate_scale),
                 );
             }
             GdsEvent::Element(Element::Path(path)) => {
@@ -463,7 +463,7 @@ fn parse_gds_layers(path: &Path) -> anyhow::Result<ParsedGdsLayers> {
                     cell,
                     box_.layer,
                     box_.boxtype,
-                    polygon_from_points(GdsPoint::iter_xy(box_.xy), coordinate_scale),
+                    polygon_from_points(GdsPoint::iter_xy(box_.xy.as_ref()), coordinate_scale),
                 );
             }
             GdsEvent::Element(Element::Sref(sref)) => {
@@ -678,7 +678,7 @@ struct CellReference {
 
 impl CellReference {
     fn from_sref(sref: &Sref<'_>, coordinate_scale: f32) -> Option<Self> {
-        let origin = point_from_xy(sref.xy, 0, coordinate_scale)?;
+        let origin = point_from_xy(sref.xy.as_ref(), 0, coordinate_scale)?;
         Some(Self {
             cell_name: sref.sname.to_owned(),
             transforms: vec![Transform2d::from_strans(sref.strans).with_translation(origin)],
@@ -692,9 +692,9 @@ impl CellReference {
             return None;
         }
 
-        let origin = point_from_xy(aref.xy, 0, coordinate_scale)?;
-        let column_end = point_from_xy(aref.xy, 1, coordinate_scale)?;
-        let row_end = point_from_xy(aref.xy, 2, coordinate_scale)?;
+        let origin = point_from_xy(aref.xy.as_ref(), 0, coordinate_scale)?;
+        let column_end = point_from_xy(aref.xy.as_ref(), 1, coordinate_scale)?;
+        let row_end = point_from_xy(aref.xy.as_ref(), 2, coordinate_scale)?;
         let column_step = step_vector(origin, column_end, columns);
         let row_step = step_vector(origin, row_end, rows);
         let base = Transform2d::from_strans(aref.strans).with_translation(origin);
@@ -879,7 +879,7 @@ fn polygon_from_path(path: &GdsPath<'_>, coordinate_scale: f32) -> Option<Polygo
         return None;
     }
 
-    let points = GdsPoint::iter_xy(path.xy)
+    let points = GdsPoint::iter_xy(path.xy.as_ref())
         .map(|point| {
             [
                 point.x as f32 * coordinate_scale,

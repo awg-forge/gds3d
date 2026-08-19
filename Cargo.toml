@@ -2,6 +2,7 @@
 name = "gds3d"
 version = "0.1.3"
 edition = "2024"
+authors = ["AWGForge <sjh855210@qq.com>"]
 description = "A 3D visualization editor for GDS layouts."
 license = "MIT"
 
@@ -14,6 +15,7 @@ category = "public.app-category.graphics-design"
 icon = ["assets/icon.icns", "assets/icon.ico"]
 
 [package.metadata.deb]
+maintainer = "AWGForge <sjh855210@qq.com>"
 depends = "$auto"
 assets = [
     ["target/release/gds3d", "usr/bin/", "755"],
@@ -37,23 +39,24 @@ members = ["src/viewport"]
 resolver = "3"
 
 [dependencies]
+gds3d-viewport = { path = "src/viewport" }
+
 anyhow = "1"
 crc32fast = "1.5"
-eframe = { version = "0.35", default-features = false, features = [
+eframe = { version = "0.36", default-features = false, features = [
     "accesskit",
     "default_fonts",
     "wgpu",
     "wayland",
     "x11",
 ] }
-gdsii = "0.2"
-gds3d-viewport = { path = "src/viewport" }
+gdsii = "0.3"
 flate2 = "1.1"
 indexmap = { version = "2", features = ["serde"] }
-lucide-icons = "1.22"
-printpdf = { version = "0.9", features = ["png"] }
+lucide-icons = "1.32"
+printpdf = { version = "0.12", features = ["png"] }
 rfd = "0.17"
-rust-i18n = "4.1"
+rust-i18n = "4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }

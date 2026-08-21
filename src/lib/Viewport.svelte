@@ -1,30 +1,106 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
   import { Color3 } from "@babylonjs/core/Maths/math.color";
   import { Color4 } from "@babylonjs/core/Maths/math.color";
   import { Engine } from "@babylonjs/core/Engines/engine";
   import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+  import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
   import { Mesh } from "@babylonjs/core/Meshes/mesh";
-  import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+  import { PolygonMeshBuilder } from "@babylonjs/core/Meshes/polygonMesh";
+  import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
   import { Scene } from "@babylonjs/core/scene";
   import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-  import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+  import { Material } from "@babylonjs/core/Materials/material";
+  import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
   import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
   import earcut from "earcut";
+  import { t } from "@i18n";
+  import defaultTheme from "../themes/default";
 
   interface Props {
     objects: unknown[];
+    objectIds: string;
+    themeMode: "light" | "dark";
+    lightingIntensity: number;
+    resetKey: number;
+    resizePaused?: boolean;
     onSelect?: (id: string | null) => void;
   }
-  let { objects, onSelect }: Props = $props();
+  type ViewportRecord = {
+    kind?: string;
+    payload?: {
+      id?: string;
+      display?: {
+        color?: string;
+        opacity?: number;
+        visible?: boolean;
+        z_min?: number;
+        z_max?: number;
+      };
+      polygons?: { points: number[][]; holes?: number[][][] }[];
+      bounds?: { min_x: number; min_y: number; max_x: number; max_y: number };
+    };
+  };
+  type RenderedLayer = {
+    mesh: Mesh;
+    material: StandardMaterial;
+    baseDepth: number;
+    appearance: LayerAppearance;
+  };
+  type LayerAppearance = {
+    color: string;
+    opacity: number;
+    visible: boolean;
+    zMin: number;
+    zMax: number;
+  };
+  type ViewportDisplayEvent = {
+    objectId: string;
+    update: {
+      color?: string;
+      opacity?: number;
+      visible?: boolean;
+      z_min?: number;
+      z_max?: number;
+    };
+  };
+  type CameraState = {
+    target: Vector3;
+    alpha: number;
+    beta: number;
+    radius: number;
+  };
+  const homeAlpha = -Math.PI / 2;
+  const homeBeta = Math.PI / 3;
+  const cameraResetDuration = 550;
+  let {
+    objects,
+    objectIds,
+    themeMode,
+    lightingIntensity,
+    resetKey,
+    resizePaused = false,
+    onSelect,
+  }: Props = $props();
   let canvas = $state<HTMLCanvasElement>();
   let scene: Scene | null = null;
   let camera: ArcRotateCamera | null = null;
   let meshes: Mesh[] = [];
+  let renderedLayers = new Map<string, RenderedLayer>();
   let renderedObjectIds = "";
-  let homeTarget = Vector3.Zero();
-  let homeRadius = 100;
+  let renderedResetKey = -1;
+  let homeCameraState: CameraState = {
+    target: Vector3.Zero(),
+    alpha: homeAlpha,
+    beta: homeBeta,
+    radius: 100,
+  };
+  const homePanningSensibility = 3;
+  let ambientLight: HemisphericLight | null = null;
+  let keyLight: DirectionalLight | null = null;
+  let requestEngineResize: (() => void) | null = null;
+  let cameraAnimationFrame: number | undefined;
 
   function preventContextMenu(event: MouseEvent) {
     event.preventDefault();
@@ -32,100 +108,317 @@
 
   function preventPageZoom(event: WheelEvent) {
     event.preventDefault();
+    stopCameraAnimation();
+  }
+
+  function stopCameraAnimation() {
+    if (cameraAnimationFrame === undefined) return;
+    cancelAnimationFrame(cameraAnimationFrame);
+    cameraAnimationFrame = undefined;
   }
 
   function clearMeshes() {
-    for (const mesh of meshes) mesh.dispose();
+    for (const { mesh } of renderedLayers.values()) mesh.dispose(false, true);
     meshes = [];
+    renderedLayers.clear();
   }
 
-  function renderObjects(sceneObjects: unknown[]) {
+  function configureLighting() {
+    ambientLight?.dispose();
+    keyLight?.dispose();
+    ambientLight = null;
+    keyLight = null;
     if (!scene) return;
-    const objectIds = sceneObjects
-      .map((entry) => (entry as { payload?: { id?: string } }).payload?.id ?? "")
-      .join("|");
-    const shouldFitCamera = objectIds !== renderedObjectIds;
-    renderedObjectIds = objectIds;
-    clearMeshes();
-    for (const entry of sceneObjects) {
-      const record = entry as {
-        kind?: string;
-        payload?: {
-          id?: string;
-          display?: {
-            color?: string;
-            brightness?: number;
-            visible?: boolean;
-            z_min?: number;
-            z_max?: number;
-          };
-          polygons?: { points: number[][] }[];
-        };
-      };
-      if (record.kind !== "GdsLayer" || !record.payload?.display?.visible) continue;
+
+    ambientLight = new HemisphericLight("ambient-light", new Vector3(0, 1, 0), scene);
+
+    keyLight = new DirectionalLight("camera-key-light", new Vector3(0, -1, 0), scene);
+    updateEnvironment();
+  }
+
+  function updateEnvironment() {
+    if (!scene) return;
+    const background = Color3.FromHexString(defaultTheme[themeMode].bgSecondary);
+    scene.clearColor = new Color4(background.r, background.g, background.b, 1);
+    if (themeMode === "dark") {
+      if (ambientLight) {
+        ambientLight.intensity = 0.55 * lightingIntensity;
+        ambientLight.diffuse = new Color3(0.82, 0.88, 1);
+        ambientLight.groundColor = new Color3(0.08, 0.1, 0.14);
+      }
+      if (keyLight) {
+        keyLight.intensity = 0.65 * lightingIntensity;
+        keyLight.diffuse = new Color3(1, 0.95, 0.86);
+      }
+      return;
+    }
+
+    if (ambientLight) {
+      ambientLight.intensity = 0.65 * lightingIntensity;
+      ambientLight.diffuse = new Color3(0.92, 0.95, 1);
+      ambientLight.groundColor = new Color3(0.24, 0.27, 0.32);
+    }
+    if (keyLight) {
+      keyLight.intensity = 0.75 * lightingIntensity;
+      keyLight.diffuse = new Color3(1, 0.97, 0.9);
+    }
+  }
+
+  function appearanceFromRecord(record: ViewportRecord): LayerAppearance {
+    const display = record.payload?.display;
+    return {
+      color: display?.color ?? "#4c89c8",
+      opacity: display?.opacity ?? 1,
+      visible: display?.visible ?? true,
+      zMin: display?.z_min ?? 0,
+      zMax: display?.z_max ?? 1,
+    };
+  }
+
+  function applyLayerAppearance(rendered: RenderedLayer) {
+    const { color: colorValue, opacity, visible, zMin, zMax } = rendered.appearance;
+    const color = Color3.FromHexString(colorValue);
+    rendered.material.diffuseColor = color;
+    rendered.material.emissiveColor = Color3.Black();
+    rendered.material.alpha = Math.min(Math.max(opacity, 0), 1);
+    rendered.material.transparencyMode =
+      opacity < 1 ? Material.MATERIAL_ALPHABLEND : Material.MATERIAL_OPAQUE;
+    rendered.material.needDepthPrePass = opacity < 1;
+    rendered.mesh.renderingGroupId = opacity < 1 ? 1 : 0;
+    rendered.mesh.setEnabled(visible);
+    const depth = Math.max(0.001, zMax - zMin);
+    rendered.mesh.scaling.y = depth / rendered.baseDepth;
+    rendered.mesh.position.y = zMin;
+  }
+
+  function updateLayerAppearance(record: ViewportRecord, rendered: RenderedLayer) {
+    rendered.appearance = appearanceFromRecord(record);
+    applyLayerAppearance(rendered);
+  }
+
+  function updateLayerAppearanceFromEvent(event: Event) {
+    const detail = (event as CustomEvent<ViewportDisplayEvent>).detail;
+    const rendered = renderedLayers.get(detail.objectId);
+    if (!rendered) return;
+    const { update } = detail;
+    rendered.appearance = {
+      ...rendered.appearance,
+      color: update.color ?? rendered.appearance.color,
+      opacity: update.opacity ?? rendered.appearance.opacity,
+      visible: update.visible ?? rendered.appearance.visible,
+      zMin: update.z_min ?? rendered.appearance.zMin,
+      zMax: update.z_max ?? rendered.appearance.zMax,
+    };
+    applyLayerAppearance(rendered);
+  }
+
+  function appendValues(target: number[], source: ArrayLike<number> | null | undefined) {
+    if (!source) return;
+    for (let index = 0; index < source.length; index += 1) target.push(source[index]);
+  }
+
+  function buildLayerMesh(
+    objectId: string,
+    polygons: { points: number[][]; holes?: number[][][] }[],
+    depth: number,
+  ) {
+    if (!scene) return null;
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    for (const [polygonIndex, polygon] of polygons.entries()) {
+      if (polygon.points.length < 3) continue;
+      const contour = polygon.points.map(([x, y]) => new Vector2(x, y));
+      const builder = new PolygonMeshBuilder(`${objectId}-${polygonIndex}`, contour, scene, earcut);
+      for (const hole of polygon.holes ?? []) {
+        if (hole.length >= 3) builder.addHole(hole.map(([x, y]) => new Vector2(x, y)));
+      }
+
+      const polygonData = builder.buildVertexData(depth);
+      if (!polygonData.positions || !polygonData.indices) continue;
+      const vertexOffset = positions.length / 3;
+      appendValues(positions, polygonData.positions);
+      appendValues(normals, polygonData.normals);
+      appendValues(uvs, polygonData.uvs);
+      for (const index of polygonData.indices) indices.push(index + vertexOffset);
+    }
+
+    if (positions.length === 0 || indices.length === 0) return null;
+    const mesh = new Mesh(objectId, scene);
+    const vertexData = new VertexData();
+    vertexData.positions = positions;
+    vertexData.normals = normals;
+    vertexData.uvs = uvs;
+    vertexData.indices = indices;
+    vertexData.applyToMesh(mesh, false);
+    return mesh;
+  }
+
+  function synchronizeObjects(sceneObjects: unknown[], forceRebuild = false) {
+    if (!scene) return;
+    const records = sceneObjects
+      .map((entry) => entry as ViewportRecord)
+      .filter(
+        (record) =>
+          (record.kind === "GdsLayer" || record.kind === "Baseplate") && record.payload?.id,
+      );
+    const renderedIds = records.map((record) => record.payload?.id ?? "").join("|");
+    const geometryChanged = forceRebuild || renderedIds !== renderedObjectIds;
+    if (!geometryChanged) return;
+
+    renderedObjectIds = renderedIds;
+    if (forceRebuild) clearMeshes();
+    const currentIds = new Set(records.map((record) => record.payload?.id ?? ""));
+    for (const [id, rendered] of renderedLayers) {
+      if (currentIds.has(id)) continue;
+      rendered.mesh.dispose(false, true);
+      renderedLayers.delete(id);
+      meshes = meshes.filter((mesh) => mesh !== rendered.mesh);
+    }
+    for (const record of records) {
       const payload = record.payload;
-      const layerMeshes: Mesh[] = [];
-      const material = new StandardMaterial(`${payload.id ?? "layer"}-material`, scene);
-      const color = Color3.FromHexString(payload.display?.color ?? "#4c89c8");
-      const brightness = payload.display?.brightness ?? 1;
-      material.diffuseColor = color.scale(brightness);
+      if (!payload?.id || renderedLayers.has(payload.id)) continue;
+      const material = new StandardMaterial(`${payload.id}-material`, scene);
+      material.specularColor = new Color3(0.06, 0.06, 0.06);
       material.alpha = 1;
       material.backFaceCulling = false;
-      for (const [index, polygon] of (payload.polygons ?? []).entries()) {
-        if (polygon.points.length < 3) continue;
-        const shape = polygon.points.map(([x, y]) => new Vector3(x, 0, y));
-        const depth = Math.max(
-          0.001,
-          (payload.display?.z_max ?? 1) - (payload.display?.z_min ?? 0),
-        );
-        const mesh = MeshBuilder.ExtrudePolygon(
-          `${payload.id ?? "layer"}-${index}`,
-          { shape, depth },
-          scene,
-          earcut,
-        );
-        mesh.position.y = payload.display?.z_min ?? 0;
-        mesh.visibility = 1;
-        mesh.material = material;
-        layerMeshes.push(mesh);
-      }
-      if (layerMeshes.length > 0) {
-        const merged = Mesh.MergeMeshes(layerMeshes, true, true);
-        if (merged) {
-          merged.name = payload.id ?? "layer";
-          merged.material = material;
-          merged.metadata = { objectId: payload.id };
-          meshes.push(merged);
-        }
-      } else {
+      const polygons =
+        payload.polygons ??
+        (payload.bounds
+          ? [
+              {
+                points: [
+                  [payload.bounds.min_x, payload.bounds.min_y],
+                  [payload.bounds.max_x, payload.bounds.min_y],
+                  [payload.bounds.max_x, payload.bounds.max_y],
+                  [payload.bounds.min_x, payload.bounds.max_y],
+                ],
+              },
+            ]
+          : []);
+      const depth = Math.max(0.001, (payload.display?.z_max ?? 1) - (payload.display?.z_min ?? 0));
+      const mesh = buildLayerMesh(payload.id, polygons, depth);
+      if (!mesh) {
         material.dispose();
+        continue;
       }
+      mesh.material = material;
+      mesh.metadata = { objectId: payload.id };
+      meshes.push(mesh);
+      const rendered = {
+        mesh,
+        material,
+        baseDepth: depth,
+        appearance: appearanceFromRecord(record),
+      };
+      renderedLayers.set(payload.id, rendered);
+      updateLayerAppearance(record, rendered);
     }
-    if (shouldFitCamera) fitCamera();
+    if (forceRebuild) fitCamera();
   }
 
   function fitCamera() {
     if (!camera || meshes.length === 0) return;
+    for (const mesh of meshes) mesh.computeWorldMatrix(true);
     const { min, max } = Mesh.MinMax(meshes);
     const target = min.add(max).scale(0.5);
     const radius = Math.max(max.subtract(min).length() * 1.25, 1);
-    camera.setTarget(target);
-    camera.radius = radius;
-    homeTarget = target.clone();
-    homeRadius = radius;
+    homeCameraState = { target, alpha: homeAlpha, beta: homeBeta, radius };
+    resetCameraImmediately();
+    camera.getViewMatrix(true);
+    homeCameraState = {
+      target: camera.target.clone(),
+      alpha: camera.alpha,
+      beta: camera.beta,
+      radius: camera.radius,
+    };
+  }
+
+  function resetCameraInertia() {
+    if (!camera) return;
+    camera.movement.resetPanVelocity();
+    camera.movement.resetRotationVelocity();
+    camera.movement.resetZoomVelocity();
+    camera.inertialAlphaOffset = 0;
+    camera.inertialBetaOffset = 0;
+    camera.inertialRadiusOffset = 0;
+    camera.inertialPanningX = 0;
+    camera.inertialPanningY = 0;
+  }
+
+  function resetCameraImmediately() {
+    if (!camera) return;
+    stopCameraAnimation();
+    resetCameraInertia();
+    camera.setTarget(homeCameraState.target, false, true, true);
+    camera.alpha = homeCameraState.alpha;
+    camera.beta = homeCameraState.beta;
+    camera.radius = homeCameraState.radius;
+  }
+
+  function shortestAngleDelta(start: number, end: number) {
+    return ((((end - start + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
+  }
+
+  function smootherStep(progress: number) {
+    return progress * progress * progress * (progress * (progress * 6 - 15) + 10);
+  }
+
+  function animateCameraHome() {
+    if (!camera) return;
+    stopCameraAnimation();
+    resetCameraInertia();
+    const activeCamera = camera;
+    const startTarget = activeCamera.target.clone();
+    const endState: CameraState = {
+      ...homeCameraState,
+      target: homeCameraState.target.clone(),
+    };
+    const startAlpha = activeCamera.alpha;
+    const startBeta = activeCamera.beta;
+    const startRadius = activeCamera.radius;
+    const alphaDelta = shortestAngleDelta(startAlpha, endState.alpha);
+    const startedAt = performance.now();
+
+    const animate = (now: number) => {
+      if (camera !== activeCamera) {
+        cameraAnimationFrame = undefined;
+        return;
+      }
+      const progress = Math.min((now - startedAt) / cameraResetDuration, 1);
+      const eased = smootherStep(progress);
+      activeCamera.setTarget(Vector3.Lerp(startTarget, endState.target, eased), false, true, true);
+      activeCamera.alpha = startAlpha + alphaDelta * eased;
+      activeCamera.beta = startBeta + (endState.beta - startBeta) * eased;
+      activeCamera.radius = startRadius + (endState.radius - startRadius) * eased;
+      if (progress < 1) {
+        cameraAnimationFrame = requestAnimationFrame(animate);
+        return;
+      }
+      cameraAnimationFrame = undefined;
+      resetCameraInertia();
+      activeCamera.setTarget(endState.target, false, true, true);
+      activeCamera.alpha = endState.alpha;
+      activeCamera.beta = endState.beta;
+      activeCamera.radius = endState.radius;
+    };
+
+    cameraAnimationFrame = requestAnimationFrame(animate);
   }
 
   onMount(() => {
     if (!canvas) return;
     const viewportCanvas = canvas;
-    const engine = new Engine(
+    const viewportEngine = new Engine(
       viewportCanvas,
       true,
       { preserveDrawingBuffer: true, stencil: true },
       true,
     );
-    scene = new Scene(engine);
-    scene.clearColor = new Color4(0.95, 0.97, 0.98, 1);
+    scene = new Scene(viewportEngine);
+    updateEnvironment();
     const activeCamera = new ArcRotateCamera(
       "camera",
       -Math.PI / 2,
@@ -135,22 +428,27 @@
       scene,
     );
     camera = activeCamera;
-    activeCamera.attachControl(viewportCanvas, true);
+    activeCamera.attachControl(false, false, 2);
     activeCamera.wheelDeltaPercentage = 0.01;
-    activeCamera.panningMouseButton = 2;
-    activeCamera.panningSensibility = 60;
+    activeCamera.panningSensibility = homePanningSensibility;
     activeCamera.lowerRadiusLimit = 0.01;
     activeCamera.upperRadiusLimit = Number.MAX_SAFE_INTEGER;
-    const resetCamera = () => {
-      activeCamera.alpha = -Math.PI / 2;
-      activeCamera.beta = Math.PI / 3;
-      activeCamera.radius = homeRadius;
-      activeCamera.setTarget(homeTarget);
-    };
     viewportCanvas.addEventListener("contextmenu", preventContextMenu);
     viewportCanvas.addEventListener("wheel", preventPageZoom, { passive: false });
-    window.addEventListener("gds3d-reset-camera", resetCamera);
-    new HemisphericLight("light", new Vector3(0, 1, 0), scene).intensity = 1.1;
+    viewportCanvas.addEventListener("pointerdown", stopCameraAnimation);
+    window.addEventListener("gds3d-reset-camera", animateCameraHome);
+    window.addEventListener("gds3d-viewport-display", updateLayerAppearanceFromEvent);
+    configureLighting();
+    const panningObserver = scene.onBeforeRenderObservable.add(() => {
+      const radiusRatio = Math.max(activeCamera.radius / homeCameraState.radius, 0.0001);
+      activeCamera.panningSensibility = homePanningSensibility / radiusRatio;
+      if (keyLight) {
+        keyLight.direction
+          .copyFrom(activeCamera.target)
+          .subtractInPlace(activeCamera.position)
+          .normalize();
+      }
+    });
     scene.onPointerObservable.add((event) => {
       if (event.type !== PointerEventTypes.POINTERPICK) return;
       const id = event.pickInfo?.hit
@@ -158,42 +456,72 @@
         : undefined;
       onSelect?.(id ?? null);
     });
-    renderObjects(objects);
-    engine.runRenderLoop(() => scene?.render());
+    renderedResetKey = resetKey;
+    synchronizeObjects(objects, true);
+    viewportEngine.runRenderLoop(() => {
+      if (!resizePaused) scene?.render();
+    });
     let resizeFrame: number | undefined;
     const resize = () => {
+      if (resizePaused) return;
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
       resizeFrame = requestAnimationFrame(() => {
         resizeFrame = undefined;
-        engine.resize();
+        viewportEngine.resize();
       });
     };
+    requestEngineResize = resize;
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(viewportCanvas);
     window.addEventListener("resize", resize);
     resize();
     return () => {
       window.removeEventListener("resize", resize);
-      window.removeEventListener("gds3d-reset-camera", resetCamera);
+      window.removeEventListener("gds3d-reset-camera", animateCameraHome);
+      window.removeEventListener("gds3d-viewport-display", updateLayerAppearanceFromEvent);
       viewportCanvas.removeEventListener("contextmenu", preventContextMenu);
       viewportCanvas.removeEventListener("wheel", preventPageZoom);
+      viewportCanvas.removeEventListener("pointerdown", stopCameraAnimation);
       resizeObserver.disconnect();
+      scene?.onBeforeRenderObservable.remove(panningObserver);
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
+      stopCameraAnimation();
+      requestEngineResize = null;
       clearMeshes();
+      ambientLight?.dispose();
+      keyLight?.dispose();
+      ambientLight = null;
+      keyLight = null;
       scene?.dispose();
-      engine.dispose();
+      viewportEngine.dispose();
       scene = null;
       camera = null;
     };
   });
 
   $effect(() => {
-    renderObjects(objects);
+    void objectIds;
+    const forceFit = resetKey !== renderedResetKey;
+    renderedResetKey = resetKey;
+    synchronizeObjects(
+      untrack(() => objects),
+      forceFit,
+    );
+  });
+
+  $effect(() => {
+    void themeMode;
+    void lightingIntensity;
+    updateEnvironment();
+  });
+
+  $effect(() => {
+    if (!resizePaused) requestEngineResize?.();
   });
 </script>
 
 <div class="viewport-frame">
-  <canvas bind:this={canvas} aria-label="GDS 3D viewport"></canvas>
+  <canvas bind:this={canvas} aria-label={t("gds.viewportLabel")}></canvas>
 </div>
 
 <style>
@@ -202,9 +530,6 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
-    border-radius: 10px;
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 45%, transparent);
   }
   canvas {
     display: block;

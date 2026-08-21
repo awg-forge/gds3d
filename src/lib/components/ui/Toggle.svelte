@@ -18,7 +18,7 @@
 
 <button
   class:checked
-  class="ui-toggle sl-toggle"
+  class="ui-toggle gds-toggle"
   type="button"
   role="switch"
   aria-label={label}

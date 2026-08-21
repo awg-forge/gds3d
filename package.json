@@ -9,14 +9,13 @@
     "dev": "vite dev -c src/vite.config.ts",
     "build": "vite build -c src/vite.config.ts",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "svelte-check --workspace . --tsconfig src/tsconfig.json",
     "notice": "node scripts/notice.ts",
     "sv": "node scripts/version.ts show",
     "cv": "node scripts/version.ts change",
     "tauri": "tauri",
     "lint": "oxlint -c src/.oxlintrc.json src scripts",
     "lint:fix": "oxlint -c src/.oxlintrc.json --fix src scripts",
-    "check": "svelte-check --workspace . --tsconfig src/tsconfig.json",
     "fmt": "oxfmt -c src/.oxfmtrc.json src scripts package.json pnpm-workspace.yaml README.md",
     "fmt:check": "oxfmt -c src/.oxfmtrc.json --check src scripts package.json pnpm-workspace.yaml README.md"
   },
@@ -24,18 +23,12 @@
     "@babylonjs/core": "^9",
     "@lucide/svelte": "^1",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-autostart": "^2",
-    "@tauri-apps/plugin-deep-link": "^2",
     "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-opener": "^2",
-    "@tauri-apps/plugin-process": "^2",
-    "@tauri-apps/plugin-updater": "^2",
-    "bits-ui": "^2",
+    "bits-ui": "^2.19.0",
     "earcut": "^3",
-    "echarts": "^6",
     "svelte": "^5",
     "svelte-awesome-color-picker": "^4",
-    "svelte-sonner": "^1"
+    "svelte-sonner": "^1.2.1"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7",
@@ -44,8 +37,7 @@
     "oxlint": "^1",
     "svelte-check": "^4",
     "typescript": "^6",
-    "vite": "^8",
-    "vitest": "^4"
+    "vite": "^8"
   },
   "engines": {
     "node": ">=24"

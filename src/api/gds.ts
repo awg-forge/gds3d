@@ -33,21 +33,34 @@ export interface SceneSnapshot {
 export function inspectGdsFile(path: string): Promise<GdsFileInfo> {
   return invoke("inspect_gds_file", { path });
 }
-export function importGds(path: string): Promise<SceneSnapshot> {
-  return invoke("import_gds", { path });
+export function importGds(path: string, selections: GdsLayerSelection[]): Promise<SceneSnapshot> {
+  return invoke("import_gds", { path, selections });
 }
 export function getSceneSnapshot(): Promise<SceneSnapshot> {
   return invoke("scene_snapshot");
 }
 export function updateObjectDisplay(update: {
   objectId: string;
+  name?: string;
   color?: string;
-  brightness?: number;
+  opacity?: number;
   visible?: boolean;
   zMin?: number;
   zMax?: number;
-}): Promise<SceneSnapshot> {
+}): Promise<void> {
   return invoke("update_object_display", { update });
+}
+export function setObjectsVisibility(objectIds: string[], visible: boolean): Promise<void> {
+  return invoke("set_objects_visibility", { objectIds, visible });
+}
+export function createBaseplate(target?: {
+  filePath: string;
+  cellName: string;
+}): Promise<SceneSnapshot> {
+  return invoke("create_baseplate", { target });
+}
+export function deleteSceneObject(objectId: string): Promise<SceneSnapshot> {
+  return invoke("delete_scene_object", { objectId });
 }
 export function saveProject(path: string): Promise<void> {
   return invoke("save_project", { path });

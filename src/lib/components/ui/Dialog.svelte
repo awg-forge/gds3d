@@ -4,25 +4,36 @@
   let {
     open = $bindable(false),
     title,
+    closeLabel = "Close dialog",
     width = "480px",
     children,
     footer,
   } = $props<{
     open?: boolean;
     title: string;
+    closeLabel?: string;
     width?: string;
     children: import("svelte").Snippet;
     footer?: import("svelte").Snippet;
   }>();
+
+  function preventImplicitClose(event: { preventDefault: () => void }): void {
+    event.preventDefault();
+  }
 </script>
 
 <Dialog.Root bind:open>
   <Dialog.Portal>
     <Dialog.Overlay class="ui-dialog-overlay" />
-    <Dialog.Content class="ui-dialog-content" style={`--ui-dialog-width: ${width}`}>
+    <Dialog.Content
+      class="ui-dialog-content"
+      style={`--ui-dialog-width: ${width}`}
+      onEscapeKeydown={preventImplicitClose}
+      onInteractOutside={preventImplicitClose}
+    >
       <div class="ui-dialog-header">
         <Dialog.Title class="ui-dialog-title">{title}</Dialog.Title>
-        <Dialog.Close class="ui-dialog-close" aria-label="Close dialog">
+        <Dialog.Close class="ui-dialog-close" aria-label={closeLabel}>
           <X size={18} />
         </Dialog.Close>
       </div>

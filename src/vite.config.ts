@@ -14,16 +14,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@api": path.join(sourceDir, "api"),
-      "@components": path.join(sourceDir, "lib/components"),
-      "@domain": path.join(sourceDir, "domain"),
       "@i18n": path.join(sourceDir, "i18n/index.ts"),
-      "@models": path.join(sourceDir, "models"),
-      "@themes": path.join(sourceDir, "themes"),
     },
   },
   build: {
     assetsInlineLimit: 0,
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1300,
     emptyOutDir: true,
     outDir: path.resolve(sourceDir, "../dist"),
   },
@@ -33,17 +29,6 @@ export default defineConfig({
     host: host || "127.0.0.1",
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
     watch: { ignored: ["**/src-tauri/**"] },
-  },
-  optimizeDeps: {
-    include: [
-      "@lucide/svelte",
-      "@tauri-apps/api/app",
-      "@tauri-apps/api/core",
-      "@tauri-apps/api/event",
-      "@tauri-apps/api/window",
-      "@tauri-apps/plugin-deep-link",
-      "bits-ui",
-    ],
   },
   clearScreen: false,
 });

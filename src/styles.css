@@ -2,9 +2,6 @@
 @import "./styles/shell.css";
 @import "./styles/preferences.css";
 @import "./styles/workspace.css";
-@import "./styles/frp.css";
-@import "./styles/p2p.css";
-@import "./styles/responsive.css";
 
 ::view-transition-old(root),
 ::view-transition-new(root) {

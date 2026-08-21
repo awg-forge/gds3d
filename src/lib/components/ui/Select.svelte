@@ -390,7 +390,7 @@
     color: var(--text);
     background: var(--overlay-surface);
     border: 1px solid color-mix(in srgb, var(--border) 82%, var(--text) 10%);
-    border-radius: var(--sl-radius-md);
+    border-radius: var(--gds-radius-md);
     box-shadow:
       0 10px 28px rgba(0, 0, 0, 0.16),
       0 2px 8px rgba(0, 0, 0, 0.08);

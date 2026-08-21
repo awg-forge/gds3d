@@ -25,35 +25,35 @@
   --shadow: 0 16px 44px rgba(30, 55, 75, 0.11);
   --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
   --app-font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
-  --sl-primary: var(--primary);
-  --sl-primary-dark: var(--primary-hover);
-  --sl-primary-bg: color-mix(in srgb, var(--primary) 11%, transparent);
-  --sl-surface: var(--surface);
-  --sl-bg-secondary: var(--surface-soft);
-  --sl-bg-tertiary: var(--surface-strong);
-  --sl-border: var(--border);
-  --sl-border-light: var(--border);
-  --sl-text-primary: var(--text);
-  --sl-text-secondary: var(--muted);
-  --sl-text-tertiary: var(--muted);
-  --sl-text-inverse: #ffffff;
-  --sl-font-sans: var(--app-font-family);
-  --sl-font-display: var(--app-font-family);
-  --sl-font-size-xs: 0.7857rem;
-  --sl-font-size-sm: 0.8571rem;
-  --sl-font-size-base: 0.9286rem;
-  --sl-font-size-lg: 1.0714rem;
-  --sl-radius-xs: 4px;
-  --sl-radius-sm: 6px;
-  --sl-radius-md: 10px;
-  --sl-radius-lg: 16px;
-  --sl-radius-xl: 24px;
-  --sl-radius-full: 9999px;
+  --gds-primary: var(--primary);
+  --gds-primary-dark: var(--primary-hover);
+  --gds-primary-bg: color-mix(in srgb, var(--primary) 11%, transparent);
+  --gds-surface: var(--surface);
+  --gds-bg-secondary: var(--surface-soft);
+  --gds-bg-tertiary: var(--surface-strong);
+  --gds-border: var(--border);
+  --gds-border-light: var(--border);
+  --gds-text-primary: var(--text);
+  --gds-text-secondary: var(--muted);
+  --gds-text-tertiary: var(--muted);
+  --gds-text-inverse: #ffffff;
+  --gds-font-sans: var(--app-font-family);
+  --gds-font-display: var(--app-font-family);
+  --gds-font-size-xs: 0.7857rem;
+  --gds-font-size-sm: 0.8571rem;
+  --gds-font-size-base: 0.9286rem;
+  --gds-font-size-lg: 1.0714rem;
+  --gds-radius-xs: 4px;
+  --gds-radius-sm: 6px;
+  --gds-radius-md: 10px;
+  --gds-radius-lg: 16px;
+  --gds-radius-xl: 24px;
+  --gds-radius-full: 9999px;
   --scrollbar-thumb: var(--border);
   --scrollbar-thumb-hover: var(--muted);
-  --sl-shadow-focus: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
-  --sl-glass-bg: rgba(255, 255, 255, 0.72);
-  --sl-acrylic-bg: rgba(255, 255, 255, 0.65);
+  --gds-shadow-focus: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+  --gds-glass-bg: rgba(255, 255, 255, 0.72);
+  --gds-acrylic-bg: rgba(255, 255, 255, 0.65);
 }
 
 :root[data-theme="dark"] {
@@ -72,8 +72,8 @@
   --danger: #f87171;
   --shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
   --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.4);
-  --sl-glass-bg: rgba(0, 0, 0, 0.72);
-  --sl-acrylic-bg: rgba(0, 0, 0, 0.65);
+  --gds-glass-bg: rgba(0, 0, 0, 0.72);
+  --gds-acrylic-bg: rgba(0, 0, 0, 0.65);
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -111,7 +111,7 @@
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  border-radius: var(--sl-radius-full);
+  border-radius: var(--gds-radius-full);
   background: transparent;
 }
 *.scrollbar-active::-webkit-scrollbar-thumb {

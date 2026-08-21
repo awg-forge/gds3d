@@ -16,12 +16,7 @@
     "noUnusedLocals": true,
     "paths": {
       "@api/*": ["api/*"],
-      "@components/*": ["lib/components/*"],
-      "@domain/*": ["domain/*"],
-      "@i18n": ["i18n/index.ts"],
-      "@models/*": ["models/*"],
-      "@themes": ["themes/index.ts"],
-      "@themes/*": ["themes/*"]
+      "@i18n": ["i18n/index.ts"]
     }
   },
   "exclude": ["vite.config.ts"]

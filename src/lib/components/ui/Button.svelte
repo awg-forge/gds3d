@@ -25,14 +25,13 @@
 
 <button
   class={`ui-button ui-button-${variant} ui-button-${size} ${className}`}
-  {disabled}
+  disabled={disabled || loading}
   {title}
   aria-busy={loading}
   {type}
   {onclick}
 >
-  {#if loading}<LoaderCircle class="spin" size={16} />{/if}
-  {@render children()}
+  {#if loading}<LoaderCircle class="spin" size={16} />{:else}{@render children()}{/if}
 </button>
 
 <style>

@@ -7,7 +7,7 @@
   theme="system"
   richColors={false}
   visibleToasts={3}
-  toastOptions={{ class: "sl-toast" }}
+  toastOptions={{ class: "gds-toast" }}
 />
 
 <style>
@@ -18,7 +18,7 @@
     --normal-border: var(--border);
     --normal-text: var(--primary);
   }
-  :global([data-sonner-toast].sl-toast) {
+  :global([data-sonner-toast].gds-toast) {
     width: fit-content !important;
     min-width: min(240px, calc(100vw - 32px));
     max-width: min(360px, calc(100vw - 32px));
@@ -35,10 +35,10 @@
     backdrop-filter: blur(18px) saturate(1.08);
     box-shadow: var(--shadow);
   }
-  :global([data-sonner-toast].sl-toast:hover) {
+  :global([data-sonner-toast].gds-toast:hover) {
     background: var(--surface-strong) !important;
   }
-  :global([data-sonner-toast].sl-toast [data-icon]) {
+  :global([data-sonner-toast].gds-toast [data-icon]) {
     color: var(--primary) !important;
   }
 </style>

@@ -1,448 +1,424 @@
 <script lang="ts">
-  import { Camera, FolderOpen, Languages, Save, Upload } from "@lucide/svelte";
   import { onMount } from "svelte";
+  import { Copy, Layers3, Minus, Moon, Settings, Square, Sun, X } from "@lucide/svelte";
   import {
-    chooseGdsPath,
-    chooseProjectPath,
-    chooseProjectSavePath,
-    getSceneSnapshot,
-    importGds,
-    inspectGdsFile,
-    loadProject,
-    saveProject,
-    updateObjectDisplay,
-    type GdsFileInfo,
-    type SceneSnapshot,
-  } from "@api/gds";
-  import Button from "./lib/components/ui/Button.svelte";
-  import ColorPicker from "./lib/components/ui/ColorPicker.svelte";
-  import Slider from "./lib/components/ui/Slider.svelte";
-  import Viewport from "./lib/Viewport.svelte";
-  import { locale, setLocale, t } from "./i18n";
+    closeWindow,
+    isWindowMaximized,
+    minimizeWindow,
+    onWindowResized,
+    startWindowDragging,
+    toggleMaximize,
+  } from "@api/window";
+  import { locale, setLocale, t } from "@i18n";
+  import logo from "./assets/logo.png";
+  import defaultTheme from "./themes/default";
+  import { applyTypography, readFontFamily, readFontSize } from "./themes/typography";
+  import AboutDialog from "./lib/components/AboutDialog.svelte";
+  import LayoutView from "./lib/components/LayoutView.svelte";
+  import SettingsView from "./lib/components/SettingsView.svelte";
+  import SplashScreen from "./lib/components/SplashScreen.svelte";
 
-  type Entry = {
-    kind?: string;
-    payload?: {
-      id?: string;
-      display?: {
-        name?: string;
-        color?: string;
-        brightness?: number;
-        visible?: boolean;
-        z_min?: number;
-        z_max?: number;
-      };
-    };
-  };
-  let fileInfo = $state<GdsFileInfo | null>(null);
-  let scene = $state<SceneSnapshot | null>(null);
-  let selectedPath = $state<string | null>(null);
-  let selectedId = $state<string | null>(null);
-  let busy = $state(false);
-  let error = $state<string | null>(null);
-  let selected = $derived(
-    scene?.objects.find((item) => (item as Entry).payload?.id === selectedId) as Entry | undefined,
-  );
-  let objects = $derived(
-    (scene?.objects ?? []).map((item) => item as Entry).filter((item) => item.kind === "GdsLayer"),
-  );
+  type View = "layout" | "settings";
+  type ThemeMode = "light" | "dark";
+  let activeView = $state<View>(readView());
+  let themeMode = $state<ThemeMode>(readThemeMode());
+  let fontSize = $state(readFontSize());
+  let fontFamily = $state(readFontFamily());
+  let lightingIntensity = $state(readLightingIntensity());
+  let maximized = $state(false);
+  let aboutOpen = $state(false);
+  let splashVisible = $state(true);
+  let isMac = $state(false);
+  let shortcutModifier = $state("Ctrl");
+
+  const navigation = [
+    { id: "layout", label: "gds.layout", icon: Layers3 },
+    { id: "settings", label: "gds.settings", icon: Settings },
+  ] as const;
+
+  type LayoutAction =
+    | "openGds"
+    | "openProject"
+    | "saveProject"
+    | "createBaseplate"
+    | "renameSelected"
+    | "deleteSelected"
+    | "resetCamera";
+  type MenuId = "file" | "edit" | "view" | "help";
+  let openMenu = $state<MenuId | null>(null);
+
+  function preventNativeContextMenu(event: MouseEvent) {
+    event.preventDefault();
+  }
 
   onMount(() => {
-    void getSceneSnapshot().then((snapshot) => (scene = snapshot));
+    isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+    shortcutModifier = isMac ? "⌘" : "Ctrl";
+    const savedLocale = localStorage.getItem("gds3d.locale");
+    if (savedLocale === "zh-CN" || savedLocale === "en") setLocale(savedLocale);
+    applyTheme();
+    applyTypography(fontSize, fontFamily);
+    const closeMenu = () => (openMenu = null);
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("contextmenu", preventNativeContextMenu);
+    window.addEventListener("keydown", handleKeyboardShortcut, true);
+    void isWindowMaximized().then((value) => (maximized = value));
+    let stopResize: (() => void) | undefined;
+    void onWindowResized(() => {
+      void isWindowMaximized().then((value) => (maximized = value));
+    }).then((unlisten) => (stopResize = unlisten));
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("contextmenu", preventNativeContextMenu);
+      window.removeEventListener("keydown", handleKeyboardShortcut, true);
+      stopResize?.();
+    };
   });
 
-  async function chooseGds() {
-    const path = await chooseGdsPath();
-    if (!path) return;
-    busy = true;
-    error = null;
-    selectedPath = path;
-    selectedId = null;
-    try {
-      fileInfo = await inspectGdsFile(path);
-      scene = await importGds(path);
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
-    } finally {
-      busy = false;
+  function readView(): View {
+    const saved = localStorage.getItem("gds3d.active-view");
+    return saved === "settings" ? saved : "layout";
+  }
+
+  function readThemeMode(): ThemeMode {
+    const saved = localStorage.getItem("gds3d.theme-mode");
+    return saved === "dark" ? "dark" : "light";
+  }
+
+  function readLightingIntensity(): number {
+    const storedValue = localStorage.getItem("gds3d.lighting-intensity");
+    if (storedValue === null) return 1;
+    const saved = Number(storedValue);
+    return Number.isFinite(saved) ? Math.min(2, Math.max(0.1, saved)) : 1;
+  }
+
+  function navigate(view: View) {
+    activeView = view;
+    localStorage.setItem("gds3d.active-view", view);
+  }
+
+  function applyTheme() {
+    const dark = themeMode === "dark";
+    const colors = defaultTheme[dark ? "dark" : "light"];
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    document.documentElement.style.setProperty("--background", colors.bg);
+    document.documentElement.style.setProperty("--surface", colors.bgSecondary);
+    document.documentElement.style.setProperty("--surface-soft", colors.bgSecondary);
+    document.documentElement.style.setProperty("--surface-strong", colors.bgTertiary);
+    document.documentElement.style.setProperty("--slider-track", colors.bgTertiary);
+    document.documentElement.style.setProperty("--slider-thumb-border", colors.bgSecondary);
+    document.documentElement.style.setProperty("--overlay-surface", colors.bgSecondary);
+    document.documentElement.style.setProperty("--primary", colors.primary);
+    document.documentElement.style.setProperty("--primary-hover", colors.primarySolidHover);
+    document.documentElement.style.setProperty("--primary-solid", colors.primarySolid);
+    document.documentElement.style.setProperty("--primary-solid-hover", colors.primarySolidHover);
+    document.documentElement.style.setProperty("--accent", colors.secondary);
+    document.documentElement.style.setProperty("--text", colors.textPrimary);
+    document.documentElement.style.setProperty("--muted", colors.textSecondary);
+    document.documentElement.style.setProperty("--border", colors.border);
+  }
+
+  function changeThemeMode(nextMode: ThemeMode) {
+    themeMode = nextMode;
+    localStorage.setItem("gds3d.theme-mode", nextMode);
+    applyTheme();
+  }
+
+  function changeLocale() {
+    const nextLocale = $locale === "zh-CN" ? "en" : "zh-CN";
+    setLocale(nextLocale);
+    localStorage.setItem("gds3d.locale", nextLocale);
+  }
+
+  function changeTypography(next: { fontSize?: number; fontFamily?: string }) {
+    if (next.fontSize !== undefined) {
+      fontSize = next.fontSize;
+      localStorage.setItem("gds3d.font-size", String(fontSize));
     }
-  }
-
-  async function openProject() {
-    const path = await chooseProjectPath();
-    if (!path) return;
-    busy = true;
-    error = null;
-    try {
-      scene = await loadProject(path);
-      selectedPath = path;
-      selectedId = null;
-      fileInfo = null;
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
-    } finally {
-      busy = false;
+    if (next.fontFamily !== undefined) {
+      fontFamily = next.fontFamily;
+      localStorage.setItem("gds3d.font-family", fontFamily);
     }
+    applyTypography(fontSize, fontFamily);
   }
 
-  async function saveCurrentProject() {
-    if (!scene) return;
-    const path = await chooseProjectSavePath();
-    if (!path) return;
-    try {
-      await saveProject(path);
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
+  function changeLightingIntensity(next: number) {
+    lightingIntensity = Math.min(2, Math.max(0.1, next));
+    localStorage.setItem("gds3d.lighting-intensity", String(lightingIntensity));
+  }
+
+  function requestLayoutAction(action: LayoutAction) {
+    openMenu = null;
+    if (activeView !== "layout") {
+      navigate("layout");
+      requestAnimationFrame(() =>
+        window.dispatchEvent(
+          new CustomEvent<LayoutAction>("gds3d-layout-action", { detail: action }),
+        ),
+      );
+      return;
     }
+    window.dispatchEvent(new CustomEvent<LayoutAction>("gds3d-layout-action", { detail: action }));
   }
 
-  async function updateSelected(update: {
-    color?: string;
-    brightness?: number;
-    visible?: boolean;
-  }) {
-    if (!selectedId) return;
-    try {
-      scene = await updateObjectDisplay({ objectId: selectedId, ...update });
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
+  function shortcutLabel(key: string) {
+    return shortcutModifier === "⌘" ? `⌘${key}` : `Ctrl+${key}`;
+  }
+
+  function handleKeyboardShortcut(event: KeyboardEvent) {
+    if (event.defaultPrevented || event.repeat || event.isComposing || splashVisible) return;
+    if (document.querySelector('[role="dialog"][data-state="open"]')) return;
+    const key = event.key.toLowerCase();
+    const primaryModifier = (event.ctrlKey || event.metaKey) && !event.altKey;
+    let action: LayoutAction | null = null;
+
+    if (primaryModifier) {
+      if (key === "o") action = event.shiftKey ? "openProject" : "openGds";
+      else if (!event.shiftKey && key === "s") action = "saveProject";
+      else if (!event.shiftKey && key === "n") action = "createBaseplate";
+      else if (!event.shiftKey && key === "f") action = "resetCamera";
+      else if (isMac && event.metaKey && !event.shiftKey && key === "backspace") {
+        action = "deleteSelected";
+      }
+    } else if (!event.shiftKey && activeView === "layout") {
+      if (openMenu !== null || document.querySelector(".tree-context-menu")) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (!isMac && key === "delete") action = "deleteSelected";
+      else if (!isMac && key === "f2") action = "renameSelected";
+      else if (isMac && key === "enter") {
+        const interactiveTarget = target?.closest("button, a, [role='menuitem']");
+        if (interactiveTarget && !target?.closest(".object-row")) return;
+        action = "renameSelected";
+      }
     }
+
+    if (!action) return;
+    event.preventDefault();
+    event.stopPropagation();
+    requestLayoutAction(action);
   }
 
-  async function updateVisibility(id: string, visible: boolean) {
-    try {
-      scene = await updateObjectDisplay({ objectId: id, visible });
-    } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
-    }
+  function openMenuFromClick(event: MouseEvent, menu: MenuId) {
+    event.stopPropagation();
+    openMenu = menu;
   }
 
-  function resetCamera() {
-    window.dispatchEvent(new CustomEvent("gds3d-reset-camera"));
+  function switchOpenMenu(menu: MenuId) {
+    if (openMenu !== null) openMenu = menu;
   }
 
-  function toggleLocale() {
-    setLocale($locale === "zh-CN" ? "en" : "zh-CN");
+  function openAbout() {
+    openMenu = null;
+    aboutOpen = true;
+  }
+
+  function handleTitlebarMouseDown(event: MouseEvent) {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, [role='menu'], input, select, a")) return;
+    void startWindowDragging();
+  }
+
+  async function maximizeWindow() {
+    await toggleMaximize();
+    maximized = await isWindowMaximized();
   }
 </script>
 
 <svelte:head><title>gds3d</title></svelte:head>
 
-<main class="gds-shell">
-  <header class="gds-toolbar">
-    <strong class="gds-brand">gds3d</strong>
-    <div class="gds-actions">
-      <Button size="sm" loading={busy} onclick={chooseGds}
-        ><FolderOpen size={16} />{t("gds.openGds")}</Button
+<div class="app-shell sidebar-collapsed">
+  <!-- svelte-ignore a11y_no_static_element_interactions (native window drag gesture) -->
+  <header class="titlebar" onmousedown={handleTitlebarMouseDown}>
+    <div class="titlebar-menu">
+      <button
+        class="menu-logo-button"
+        title={t("gds.layout")}
+        aria-label={t("gds.layout")}
+        onclick={() => navigate("layout")}><img class="menu-logo" src={logo} alt="" /></button
       >
-      <Button size="sm" variant="outline" onclick={openProject}
-        ><Upload size={16} />{t("gds.openProject")}</Button
-      >
-      <Button size="sm" variant="outline" disabled={!scene} onclick={saveCurrentProject}
-        ><Save size={16} />{t("gds.saveProject")}</Button
-      >
-      <Button size="sm" variant="ghost" onclick={resetCamera}
-        ><Camera size={16} />{t("gds.resetCamera")}</Button
-      >
+      <nav class="menubar" aria-label="gds3d">
+        <div class="menu-root">
+          <button
+            class:active={openMenu === "file"}
+            class="menu-trigger"
+            aria-expanded={openMenu === "file"}
+            onmouseenter={() => switchOpenMenu("file")}
+            onclick={(event) => openMenuFromClick(event, "file")}>{t("gds.menuFile")}</button
+          >
+          {#if openMenu === "file"}
+            <div class="app-menu" role="menu">
+              <button role="menuitem" onclick={() => requestLayoutAction("openGds")}
+                ><span>{t("gds.openGds")}</span><kbd>{shortcutLabel("O")}</kbd></button
+              >
+              <div class="menu-separator"></div>
+              <button role="menuitem" onclick={() => requestLayoutAction("openProject")}
+                ><span>{t("gds.openProject")}</span><kbd
+                  >{shortcutModifier === "⌘" ? "⌘⇧O" : "Ctrl+Shift+O"}</kbd
+                ></button
+              >
+              <button role="menuitem" onclick={() => requestLayoutAction("saveProject")}
+                ><span>{t("gds.saveProject")}</span><kbd>{shortcutLabel("S")}</kbd></button
+              >
+            </div>
+          {/if}
+        </div>
+        <div class="menu-root">
+          <button
+            class:active={openMenu === "edit"}
+            class="menu-trigger"
+            aria-expanded={openMenu === "edit"}
+            onmouseenter={() => switchOpenMenu("edit")}
+            onclick={(event) => openMenuFromClick(event, "edit")}>{t("gds.menuEdit")}</button
+          >
+          {#if openMenu === "edit"}
+            <div class="app-menu" role="menu">
+              <button role="menuitem" onclick={() => requestLayoutAction("createBaseplate")}
+                ><span>{t("gds.addBaseplate")}</span><kbd>{shortcutLabel("N")}</kbd></button
+              >
+              <div class="menu-separator"></div>
+              <button role="menuitem" onclick={() => requestLayoutAction("renameSelected")}
+                ><span>{t("gds.rename")}</span><kbd>{isMac ? "Enter" : "F2"}</kbd></button
+              >
+              <button role="menuitem" onclick={() => requestLayoutAction("deleteSelected")}
+                ><span>{t("gds.delete")}</span><kbd>{isMac ? "⌘⌫" : "Delete"}</kbd></button
+              >
+            </div>
+          {/if}
+        </div>
+        <div class="menu-root">
+          <button
+            class:active={openMenu === "view"}
+            class="menu-trigger"
+            aria-expanded={openMenu === "view"}
+            onmouseenter={() => switchOpenMenu("view")}
+            onclick={(event) => openMenuFromClick(event, "view")}>{t("gds.menuView")}</button
+          >
+          {#if openMenu === "view"}
+            <div class="app-menu" role="menu">
+              <button role="menuitem" onclick={() => requestLayoutAction("resetCamera")}
+                ><span>{t("gds.resetCamera")}</span><kbd>{shortcutLabel("F")}</kbd></button
+              >
+            </div>
+          {/if}
+        </div>
+        <div class="menu-root">
+          <button
+            class:active={openMenu === "help"}
+            class="menu-trigger"
+            aria-expanded={openMenu === "help"}
+            onmouseenter={() => switchOpenMenu("help")}
+            onclick={(event) => openMenuFromClick(event, "help")}>{t("gds.menuHelp")}</button
+          >
+          {#if openMenu === "help"}
+            <div class="app-menu" role="menu">
+              <button role="menuitem" onclick={openAbout}>{t("gds.about")}</button>
+            </div>
+          {/if}
+        </div>
+      </nav>
+      <div class="titlebar-drag-space"></div>
     </div>
-    <span class="gds-path" title={selectedPath ?? undefined}>{selectedPath ?? t("gds.noFile")}</span
-    >
-    <Button
-      class="gds-locale-button"
-      size="sm"
-      variant="ghost"
-      title={t($locale === "zh-CN" ? "gds.switchToEnglish" : "gds.switchToChinese")}
-      onclick={toggleLocale}><Languages size={16} />{$locale === "zh-CN" ? "EN" : "中"}</Button
-    >
+    <div class="titlebar-actions">
+      <button
+        class="header-language-button"
+        title={t($locale === "zh-CN" ? "gds.switchToEnglish" : "gds.switchToChinese")}
+        onclick={changeLocale}
+        ><span aria-hidden="true">{$locale === "zh-CN" ? "中" : "EN"}</span></button
+      >
+      <div class="theme-switcher" role="group" aria-label={t("gds.theme")}>
+        <div
+          class="theme-indicator"
+          style={`transform: translateX(${["light", "dark"].indexOf(themeMode) * 26}px)`}
+        ></div>
+        <button
+          class:active={themeMode === "light"}
+          class="theme-button"
+          title={t("gds.lightTheme")}
+          onclick={() => changeThemeMode("light")}><Sun size={16} /></button
+        >
+        <button
+          class:active={themeMode === "dark"}
+          class="theme-button"
+          title={t("gds.darkTheme")}
+          onclick={() => changeThemeMode("dark")}><Moon size={16} /></button
+        >
+      </div>
+      <div class="window-controls">
+        <button class="window-button" title={t("gds.windowMinimize")} onclick={minimizeWindow}
+          ><Minus size={12} /></button
+        >
+        <button class="window-button" title={t("gds.windowMaximize")} onclick={maximizeWindow}
+          >{#if maximized}<Copy size={12} />{:else}<Square size={12} />{/if}</button
+        >
+        <button
+          class="window-button window-button-close"
+          title={t("gds.windowClose")}
+          onclick={closeWindow}><X size={12} /></button
+        >
+      </div>
+    </div>
   </header>
 
-  <section class="gds-workbench">
-    <aside class="gds-panel gds-layers">
-      <div class="gds-heading">
-        <h2>{t("gds.layers")}</h2>
-        <span>{objects.length}</span>
-      </div>
-      {#if fileInfo}
-        {#each fileInfo.cells as cell}
-          <section class="gds-cell">
-            <h3>{cell.name}</h3>
-            {#each cell.layers as layer}<div class="gds-layer">
-                <span>L{layer.selection.layer}/D{layer.selection.datatype}</span><small
-                  >{t("gds.polygonCount", { count: layer.polygon_count })}</small
-                >
-              </div>{/each}
-          </section>
-        {/each}
-      {/if}
-      {#if objects.length}
-        <div class="gds-object-list">
-          {#each objects as item}
-            {@const id = item.payload?.id ?? ""}
-            <div class:selected={id === selectedId} class="gds-object">
-              <Button
-                class="gds-object-button"
-                variant="ghost"
-                size="sm"
-                onclick={() => (selectedId = id)}
-                >{item.payload?.display?.name ?? t("gds.layer")}</Button
-              >
-              <input
-                aria-label={t("gds.toggleVisibility")}
-                type="checkbox"
-                checked={item.payload?.display?.visible ?? true}
-                onchange={(event) =>
-                  id && updateVisibility(id, (event.currentTarget as HTMLInputElement).checked)}
-              />
-            </div>
-          {/each}
-        </div>
-      {:else}<p class="gds-empty">{t("gds.openToInspect")}</p>{/if}
-    </aside>
-
-    <section class="gds-viewport">
-      {#if scene}<Viewport
-          objects={scene.objects}
-          onSelect={(id) => (selectedId = id)}
-        />{:else}<div class="gds-viewport-empty">
-          <FolderOpen size={32} /><strong>{t("gds.openLayout")}</strong><span
-            >{t("gds.sceneAppearsHere")}</span
+  <aside class="sidebar collapsed">
+    <nav class="sidebar-nav" aria-label="gds3d">
+      <div class="nav-group">
+        {#each navigation.slice(0, 1) as item}
+          {@const Icon = item.icon}
+          <button
+            class:active={activeView === item.id}
+            class="nav-item"
+            title={t(item.label)}
+            onclick={() => navigate(item.id)}><Icon class="nav-icon" size={19} /></button
           >
-        </div>{/if}
-    </section>
+        {/each}
+      </div>
+      <div class="nav-group nav-group-bottom">
+        {#each navigation.slice(1) as item}
+          {@const Icon = item.icon}
+          <button
+            class:active={activeView === item.id}
+            class="nav-item"
+            title={t(item.label)}
+            onclick={() => navigate(item.id)}><Icon class="nav-icon" size={19} /></button
+          >
+        {/each}
+      </div>
+    </nav>
+  </aside>
 
-    <aside class="gds-panel gds-properties">
-      <div class="gds-heading"><h2>{t("gds.properties")}</h2></div>
-      {#if selected}
-        <div class="gds-property-grid">
-          <h3>{selected.payload?.display?.name ?? selected.payload?.id}</h3>
-          <div class="gds-property">
-            <span>{t("gds.visible")}</span><input
-              type="checkbox"
-              checked={selected.payload?.display?.visible ?? true}
-              onchange={(event) =>
-                updateSelected({ visible: (event.currentTarget as HTMLInputElement).checked })}
-            />
-          </div>
-          <div class="gds-property">
-            <span>{t("gds.color")}</span><ColorPicker
-              label={t("gds.layerColor")}
-              value={selected.payload?.display?.color ?? "#2D6CDF"}
-              onvaluechange={(color) => updateSelected({ color })}
-            />
-          </div>
-          <div class="gds-property-stack">
-            <span>{t("gds.brightness")}</span><Slider
-              value={selected.payload?.display?.brightness ?? 1}
-              min={0.05}
-              max={2}
-              step={0.05}
-              ariaLabel={t("gds.brightness")}
-              onvaluechange={(brightness) => updateSelected({ brightness })}
-            />
-          </div>
-          <div class="gds-property">
-            <span>{t("gds.zRange")}</span><strong
-              >{selected.payload?.display?.z_min} — {selected.payload?.display?.z_max}</strong
-            >
-          </div>
-        </div>
-      {:else if scene}<p class="gds-empty">
-          {t("gds.selectLayer")}
-        </p>{:else}<p class="gds-empty">{t("gds.noScene")}</p>{/if}
-    </aside>
-  </section>
-  {#if error}<div class="gds-error">{error}</div>{/if}
-</main>
+  <main class="app-content">
+    <div class:inactive={activeView !== "layout"} class="app-view layout-app-view">
+      <LayoutView {themeMode} {lightingIntensity} active={activeView === "layout"} />
+    </div>
+    {#if activeView === "settings"}<div class="app-view settings-app-view">
+        <SettingsView
+          {fontSize}
+          {fontFamily}
+          {lightingIntensity}
+          ontypographychange={changeTypography}
+          onlightingchange={changeLightingIntensity}
+        />
+      </div>{/if}
+  </main>
+</div>
+
+<AboutDialog bind:open={aboutOpen} />
+{#if splashVisible}<SplashScreen onready={() => (splashVisible = false)} />{/if}
 
 <style>
-  .gds-shell {
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    display: grid;
-    grid-template-rows: 56px minmax(0, 1fr);
-    color: var(--text);
-    background: var(--background);
-  }
-  .gds-toolbar {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 0 18px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .gds-brand {
-    font-size: 1.08rem;
-    letter-spacing: 0.04em;
-  }
-  .gds-actions {
-    display: flex;
-    gap: 8px;
-    flex: 0 0 auto;
-  }
-  .gds-path {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    color: var(--muted);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .gds-locale-button {
-    flex: 0 0 auto;
-  }
-  .gds-workbench {
-    min-height: 0;
-    display: grid;
-    grid-template-columns: 264px minmax(0, 1fr) 300px;
-  }
-  .gds-panel {
-    min-width: 0;
-    overflow: auto;
-    padding: 18px;
-    background: var(--surface);
-  }
-  .gds-layers {
-    border-right: 1px solid var(--border);
-  }
-  .gds-properties {
-    border-left: 1px solid var(--border);
-  }
-  .gds-heading {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-  }
-  .gds-heading h2 {
-    margin: 0;
-    font-size: 1rem;
-  }
-  .gds-heading span {
-    min-width: 22px;
-    padding: 2px 7px;
-    border-radius: 999px;
-    color: var(--muted);
-    background: var(--surface-soft);
-    font-size: 0.78rem;
-    text-align: center;
-  }
-  .gds-cell {
-    margin-bottom: 18px;
-  }
-  .gds-cell h3 {
-    margin: 0 0 7px;
-    color: var(--muted);
-    font-size: 0.9rem;
-  }
-  .gds-layer {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 4px;
-    border-bottom: 1px solid var(--border);
-  }
-  .gds-layer small {
-    color: var(--muted);
-  }
-  .gds-object-list {
-    display: grid;
-    gap: 3px;
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
-  }
-  .gds-object {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 24px;
-    align-items: center;
-    gap: 4px;
-    border-radius: 8px;
-  }
-  .gds-object.selected {
-    background: color-mix(in srgb, var(--primary) 12%, transparent);
-  }
-  .gds-object :global(.gds-object-button) {
-    width: 100%;
-    justify-content: flex-start;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .gds-object input,
-  .gds-property input {
-    accent-color: var(--primary);
-  }
-  .gds-viewport {
+  .app-view {
+    grid-area: 1 / 1;
     min-width: 0;
     min-height: 0;
-    padding: 10px;
-    background:
-      radial-gradient(
-        circle at 50% 20%,
-        color-mix(in srgb, var(--primary) 6%, transparent),
-        transparent 46%
-      ),
-      var(--surface-soft);
-  }
-  .gds-viewport-empty {
-    width: 100%;
-    height: 100%;
     display: grid;
-    place-content: center;
-    justify-items: center;
-    gap: 10px;
-    color: var(--muted);
   }
-  .gds-property-grid {
-    display: grid;
-    gap: 16px;
+  .layout-app-view.inactive {
+    visibility: hidden;
+    pointer-events: none;
   }
-  .gds-property-grid h3 {
-    margin: 0;
-    overflow-wrap: anywhere;
-  }
-  .gds-property {
-    min-height: 34px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    color: var(--muted);
-  }
-  .gds-property strong {
-    color: var(--text);
-    font-size: 0.86rem;
-  }
-  .gds-property-stack {
-    display: grid;
-    gap: 8px;
-    color: var(--muted);
-  }
-  .gds-empty {
-    color: var(--muted);
-    line-height: 1.55;
-  }
-  .gds-error {
-    position: fixed;
-    right: 18px;
-    bottom: 18px;
-    max-width: 520px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    color: white;
-    background: var(--danger);
-    box-shadow: var(--shadow);
-  }
-  @media (max-width: 960px) {
-    .gds-workbench {
-      grid-template-columns: 220px minmax(0, 1fr);
-    }
-    .gds-properties {
-      display: none;
-    }
-    .gds-actions :global(.ui-button:nth-child(3)) {
-      display: none;
-    }
+  .settings-app-view {
+    background: transparent;
   }
 </style>

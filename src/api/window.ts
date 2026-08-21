@@ -15,6 +15,10 @@ export function minimizeWindow(): Promise<void> {
   return mainWindow.minimize();
 }
 
+export function startWindowDragging(): Promise<void> {
+  return mainWindow.startDragging();
+}
+
 export function toggleMaximize(): Promise<void> {
   return mainWindow.toggleMaximize();
 }

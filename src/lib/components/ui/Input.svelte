@@ -5,6 +5,7 @@
     placeholder = "",
     disabled = false,
     hideNumberControls = false,
+    input = $bindable<HTMLInputElement | undefined>(),
     class: className = "",
     onchange,
     onkeydown,
@@ -15,6 +16,7 @@
     placeholder?: string;
     disabled?: boolean;
     hideNumberControls?: boolean;
+    input?: HTMLInputElement;
     class?: string;
     onchange?: (event: Event & { currentTarget: HTMLInputElement }) => void;
     onkeydown?: (event: KeyboardEvent) => void;
@@ -23,6 +25,7 @@
 </script>
 
 <input
+  bind:this={input}
   class:hide-number-controls={hideNumberControls}
   class={`ui-input ${className}`}
   bind:value

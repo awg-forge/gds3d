@@ -2,20 +2,26 @@ export const DEFAULT_FONT_SIZE = 14;
 export const MIN_FONT_SIZE = 12;
 export const MAX_FONT_SIZE = 20;
 
-const DEFAULT_FONT_FAMILY = 'Inter, "PingFang SC", "Microsoft YaHei", sans-serif';
+const fallbackFontFamily = 'Inter, "PingFang SC", "Microsoft YaHei", sans-serif';
 
-function fontStack(fontFamily: string, fallback: string): string {
-  const family = fontFamily.trim();
-  const escapedFamily = family.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  return family ? `"${escapedFamily}", ${fallback}` : fallback;
+export function clampFontSize(value: number): number {
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value || DEFAULT_FONT_SIZE));
 }
 
 export function applyTypography(fontSize: number, fontFamily: string): void {
-  const size = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, fontSize || DEFAULT_FONT_SIZE));
+  const selectedFamily = fontFamily.trim();
+  const escapedFamily = selectedFamily.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const family = selectedFamily ? `"${escapedFamily}", ${fallbackFontFamily}` : fallbackFontFamily;
 
-  document.documentElement.style.fontSize = `${size}px`;
-  document.documentElement.style.setProperty(
-    "--app-font-family",
-    fontStack(fontFamily, DEFAULT_FONT_FAMILY),
-  );
+  document.documentElement.style.fontSize = `${clampFontSize(fontSize)}px`;
+  document.documentElement.style.setProperty("--app-font-family", family);
+}
+
+export function readFontSize(): number {
+  const value = Number(localStorage.getItem("gds3d.font-size"));
+  return Number.isFinite(value) ? clampFontSize(value) : DEFAULT_FONT_SIZE;
+}
+
+export function readFontFamily(): string {
+  return localStorage.getItem("gds3d.font-family") ?? "";
 }

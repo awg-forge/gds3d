@@ -1,278 +1,208 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
-  import { disableAutostart, enableAutostart, getAutostartEnabled } from "@api/autostart";
+  import { onMount } from "svelte";
+  import { getDesktopPreferences, getSystemFonts, updateDesktopPreferences } from "@api/desktop";
   import { t } from "@i18n";
-  import type { Preferences } from "@models/preferences";
-  import { showToast, updateApplication, updateConnection, updateLightweight } from "../state";
-  import Input from "./ui/Input.svelte";
-  import Select, { type Option } from "./ui/Select.svelte";
+  import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "../../themes/typography";
+  import Select from "./ui/Select.svelte";
+  import Slider from "./ui/Slider.svelte";
   import Toggle from "./ui/Toggle.svelte";
 
-  let { value } = $props<{ value: Preferences }>();
-  let autostartEnabled = $state(false);
-  let autostartLoading = $state(true);
-  let autostartUpdating = $state(false);
-  let autoLightweight = $state(false);
-  let autoLightweightMinutes = $state("3");
-  let reconnectUnlimited = $state(true);
-  let relayCustom = $state(untrack(() => value.relayCustom));
-  let relayUrl = $state(untrack(() => value.relayUrl));
-  const splashOptions = $derived<Option[]>([
-    { label: t("connectionSettings.disabled"), value: 0 },
-    ...[500, 1000, 1500, 2000].map((durationMs) => ({
-      label: t("connectionSettings.seconds", { value: durationMs / 1000 }),
-      value: durationMs,
-    })),
-  ]);
-  const relayOptions = $derived<Option[]>([
-    { label: t("connectionSettings.defaultRelay"), value: "default" },
-    { label: t("connectionSettings.customRelay"), value: "custom" },
-  ]);
-  const reconnectOptions = $derived<Option[]>([
-    { label: t("connectionSettings.unlimited"), value: "unlimited" },
-    { label: t("connectionSettings.limited"), value: "limited" },
-  ]);
-  const timeoutOptions = $derived<Option[]>(
-    [10, 15, 20, 30, 60].map((timeoutSeconds) => ({
-      label: t("connectionSettings.seconds", { value: timeoutSeconds }),
-      value: timeoutSeconds,
-    })),
-  );
+  let { fontSize, fontFamily, lightingIntensity, ontypographychange, onlightingchange } = $props<{
+    fontSize: number;
+    fontFamily: string;
+    lightingIntensity: number;
+    ontypographychange: (value: { fontSize?: number; fontFamily?: string }) => void;
+    onlightingchange: (value: number) => void;
+  }>();
 
-  $effect(() => {
-    if (value.autoLightweightMinutes != null) {
-      autoLightweight = true;
-      autoLightweightMinutes = String(value.autoLightweightMinutes);
-    }
-    reconnectUnlimited = value.reconnectTimeoutSecs == null;
+  let fonts = $state<string[]>([]);
+  const fontOptions = $derived([
+    { label: t("gds.systemFont"), value: "" },
+    ...(fontFamily && !fonts.includes(fontFamily)
+      ? [{ label: fontFamily, value: fontFamily, fontFamily }]
+      : []),
+    ...fonts.map((font) => ({ label: font, value: font, fontFamily: font })),
+  ]);
+
+  let rememberWindowState = $state(true);
+  let closeToTray = $state(false);
+  let savingWindowPreferences = $state(false);
+
+  onMount(() => {
+    void getDesktopPreferences()
+      .then((preferences) => {
+        rememberWindowState = preferences.rememberWindowState;
+        closeToTray = preferences.closeToTray;
+        return undefined;
+      })
+      .catch(() => undefined);
+    void getSystemFonts()
+      .then((systemFonts) => {
+        fonts = systemFonts;
+        return undefined;
+      })
+      .catch(() => undefined);
   });
 
-  onMount(async () => {
-    try {
-      autostartEnabled = await getAutostartEnabled();
-    } catch (error) {
-      console.error("Failed to load autostart", error);
-    } finally {
-      autostartLoading = false;
-    }
-  });
-  async function updateAutostart(next: boolean): Promise<void> {
-    if (autostartLoading || autostartUpdating) return;
-    const previous = autostartEnabled;
-    autostartEnabled = next;
-    autostartUpdating = true;
-    try {
-      if (next) await enableAutostart();
-      else await disableAutostart();
-    } catch (error) {
-      autostartEnabled = previous;
-      console.error("Failed to update autostart", error);
-      showToast(t("connectionSettings.autostartError"), "error");
-    } finally {
-      autostartUpdating = false;
-    }
+  function updateFontFamily(next: string): void {
+    ontypographychange({ fontFamily: next });
   }
-  function persistConnection(
-    update: Partial<Pick<Preferences, "relayCustom" | "relayUrl" | "reconnectTimeoutSecs">> = {},
+
+  function updateFontSize(next: number): void {
+    ontypographychange({ fontSize: next });
+  }
+
+  function saveWindowPreferences(
+    next: Partial<{ rememberWindowState: boolean; closeToTray: boolean }>,
   ): void {
-    const next = {
-      relayCustom,
-      relayUrl,
-      reconnectTimeoutSecs: reconnectUnlimited ? null : (value.reconnectTimeoutSecs ?? 30),
-      ...update,
+    const preferences = {
+      rememberWindowState: next.rememberWindowState ?? rememberWindowState,
+      closeToTray: next.closeToTray ?? closeToTray,
     };
-    if (next.relayCustom && !isValidRelayUrl(next.relayUrl)) return;
-    updateConnection(next);
-  }
-  function isValidRelayUrl(relayEndpoint: string): boolean {
-    try {
-      const url = new URL(relayEndpoint.trim());
-      return url.protocol === "http:" || url.protocol === "https:";
-    } catch {
-      return false;
-    }
-  }
-  function saveLightweight(): void {
-    const minutes = Number(autoLightweightMinutes);
-    if (!autoLightweight) {
-      updateLightweight({ autoLightweightMinutes: null });
-      return;
-    }
-    if (!isValidLightweightMinutes()) return;
-    updateLightweight({ autoLightweightMinutes: minutes });
-  }
-  function isValidLightweightMinutes(): boolean {
-    const minutes = Number(autoLightweightMinutes);
-    return Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440;
+    rememberWindowState = preferences.rememberWindowState;
+    closeToTray = preferences.closeToTray;
+    savingWindowPreferences = true;
+    void updateDesktopPreferences(preferences).finally(() => (savingWindowPreferences = false));
   }
 </script>
 
 <div class="workspace settings-workspace">
   <section class="settings-section">
-    <div class="settings-section-heading"><h2>{t("connectionSettings.startup")}</h2></div>
-    <div class="preference-row switch-row">
-      <span>{t("connectionSettings.autostart")}</span><Toggle
-        label={t("connectionSettings.autostart")}
-        checked={autostartEnabled}
-        disabled={autostartLoading || autostartUpdating}
-        oncheckedchange={updateAutostart}
+    <div class="settings-section-heading"><h2>{t("gds.appearance")}</h2></div>
+    <div class="preference-row">
+      <span>{t("gds.fontFamily")}</span>
+      <Select
+        class="settings-select font-family-select"
+        value={fontFamily}
+        options={fontOptions}
+        searchable
+        searchPlaceholder={t("gds.searchFont")}
+        emptyLabel={t("gds.noResults")}
+        onValueChange={updateFontFamily}
       />
     </div>
-    {#if autostartEnabled}<div class="preference-row switch-row">
-        <span>{t("connectionSettings.silentStart")}</span><Toggle
-          label={t("connectionSettings.silentStart")}
-          checked={value.silentStart}
-          oncheckedchange={(checked) =>
-            updateApplication({
-              splashDurationMs: value.splashDurationMs,
-              silentStart: checked,
-              autoUpdate: value.autoUpdate,
-              rememberWindowState: value.rememberWindowState,
-            })}
+    <div class="preference-row">
+      <span>{t("gds.fontSize")}</span>
+      <div class="font-size-control">
+        <Slider
+          id="font-size-slider"
+          min={MIN_FONT_SIZE}
+          max={MAX_FONT_SIZE}
+          value={fontSize}
+          ariaLabel={t("gds.fontSize")}
+          ariaValueText={`${fontSize}px`}
+          onvaluechange={updateFontSize}
         />
-      </div>{/if}
-    <div class="preference-row switch-row">
-      <span>{t("connectionSettings.autoUpdate")}</span><Toggle
-        label={t("connectionSettings.autoUpdate")}
-        checked={value.autoUpdate}
-        oncheckedchange={(checked) =>
-          updateApplication({
-            splashDurationMs: value.splashDurationMs,
-            silentStart: value.silentStart,
-            autoUpdate: checked,
-            rememberWindowState: value.rememberWindowState,
-          })}
-      />
+        <output for="font-size-slider">{fontSize}px</output>
+      </div>
     </div>
+  </section>
+
+  <section class="settings-section">
+    <div class="settings-section-heading"><h2>{t("gds.viewport")}</h2></div>
     <div class="preference-row">
-      <span>{t("connectionSettings.splashDuration")}</span><Select
-        class="settings-select"
-        value={value.splashDurationMs}
-        options={splashOptions}
-        onValueChange={(next) =>
-          updateApplication({
-            splashDurationMs: Number(next) as Preferences["splashDurationMs"],
-            silentStart: value.silentStart,
-            autoUpdate: value.autoUpdate,
-            rememberWindowState: value.rememberWindowState,
-          })}
-      />
+      <span>{t("gds.globalLighting")}</span>
+      <div class="font-size-control">
+        <Slider
+          id="global-lighting-slider"
+          min={0.1}
+          max={2}
+          step={0.05}
+          value={lightingIntensity}
+          ariaLabel={t("gds.globalLighting")}
+          ariaValueText={`${Math.round(lightingIntensity * 100)}%`}
+          onvaluechange={onlightingchange}
+        />
+        <output for="global-lighting-slider">{Math.round(lightingIntensity * 100)}%</output>
+      </div>
     </div>
   </section>
 
   <section class="settings-section">
-    <div class="settings-section-heading"><h2>{t("connectionSettings.windowBehavior")}</h2></div>
+    <div class="settings-section-heading"><h2>{t("gds.window")}</h2></div>
     <div class="preference-row switch-row">
-      <span>{t("connectionSettings.rememberWindowState")}</span><Toggle
-        label={t("connectionSettings.rememberWindowState")}
-        checked={value.rememberWindowState}
-        oncheckedchange={(checked) =>
-          updateApplication({
-            splashDurationMs: value.splashDurationMs,
-            silentStart: value.silentStart,
-            autoUpdate: value.autoUpdate,
-            rememberWindowState: checked,
-          })}
+      <span>{t("gds.rememberWindowState")}</span>
+      <Toggle
+        checked={rememberWindowState}
+        disabled={savingWindowPreferences}
+        label={t("gds.rememberWindowState")}
+        oncheckedchange={(checked) => saveWindowPreferences({ rememberWindowState: checked })}
       />
-    </div>
-  </section>
-
-  <section class="settings-section">
-    <div class="settings-section-heading">
-      <h2>{t("connectionSettings.lightweightSection")}</h2>
     </div>
     <div class="preference-row switch-row">
-      <span>{t("connectionSettings.autoLightweight")}</span><Toggle
-        label={t("connectionSettings.autoLightweight")}
-        checked={autoLightweight}
-        oncheckedchange={(checked) => {
-          autoLightweight = checked;
-          if (checked && !isValidLightweightMinutes()) autoLightweightMinutes = "3";
-          saveLightweight();
-        }}
+      <span>{t("gds.closeToTray")}</span>
+      <Toggle
+        checked={closeToTray}
+        disabled={savingWindowPreferences}
+        label={t("gds.closeToTray")}
+        oncheckedchange={(checked) => saveWindowPreferences({ closeToTray: checked })}
       />
     </div>
-    {#if autoLightweight}<label class="preference-row settings-input-row"
-        ><span>{t("connectionSettings.lightweightDelay")}</span>
-        <div class="settings-input settings-number-input sl-input-wrapper">
-          <Input
-            bind:value={autoLightweightMinutes}
-            type="number"
-            min={1}
-            max={1440}
-            onchange={saveLightweight}
-            hideNumberControls
-          /><span>{t("connectionSettings.minutes")}</span>
-        </div></label
-      >{#if !isValidLightweightMinutes()}<p class="field-error relay-error">
-          {t("connectionSettings.invalidLightweightDelay")}
-        </p>{/if}{/if}
-  </section>
-
-  <section class="settings-section">
-    <div class="settings-section-heading"><h2>{t("connectionSettings.relaySection")}</h2></div>
-    <div class="preference-row">
-      <span>{t("connectionSettings.relayNode")}</span><Select
-        class="settings-select"
-        value={relayCustom ? "custom" : "default"}
-        options={relayOptions}
-        onValueChange={(next) => {
-          relayCustom = next === "custom";
-          persistConnection();
-        }}
-      />
-    </div>
-    {#if relayCustom}<label class="preference-row settings-input-row"
-        ><span>{t("connectionSettings.customRelayUrl")}</span><Input
-          class="settings-input"
-          bind:value={relayUrl}
-          type="url"
-          placeholder={t("connectionSettings.relayPlaceholder")}
-          onchange={() => persistConnection()}
-        /></label
-      >{#if !isValidRelayUrl(relayUrl)}<p class="field-error relay-error">
-          {t("connectionSettings.invalidRelay")}
-        </p>{/if}{/if}
-  </section>
-
-  <section class="settings-section">
-    <div class="settings-section-heading"><h2>{t("connectionSettings.reconnectSection")}</h2></div>
-    <div class="preference-row">
-      <span>{t("connectionSettings.reconnectPolicy")}</span><Select
-        class="settings-select"
-        value={reconnectUnlimited ? "unlimited" : "limited"}
-        options={reconnectOptions}
-        onValueChange={(next) => {
-          reconnectUnlimited = next === "unlimited";
-          persistConnection();
-        }}
-      />
-    </div>
-    {#if !reconnectUnlimited}<label class="preference-row settings-input-row"
-        ><span>{t("connectionSettings.timeout")}</span><Select
-          class="settings-select"
-          value={value.reconnectTimeoutSecs ?? 30}
-          options={timeoutOptions}
-          onValueChange={(next) => persistConnection({ reconnectTimeoutSecs: Number(next) })}
-        /></label
-      >{/if}
   </section>
 </div>
 
 <style>
-  .settings-number-input {
-    position: relative;
+  .settings-workspace {
+    width: min(760px, calc(100% - 48px));
+    min-height: 100%;
+    margin: 0 auto;
+    padding: 24px 0 32px;
+    align-content: start;
+    gap: 16px;
   }
-  .settings-number-input :global(.ui-input) {
-    padding-right: 52px;
+
+  .preference-row {
+    min-height: 38px;
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) var(--settings-control-width);
+    align-items: center;
+    gap: 20px;
   }
-  .settings-number-input > span {
-    position: absolute;
-    top: 50%;
-    right: 12px;
+
+  .preference-row > span {
+    font-weight: 500;
+  }
+
+  :global(.settings-select),
+  .font-size-control,
+  .switch-row :global(.gds-toggle) {
+    width: var(--settings-control-width);
+    justify-self: end;
+  }
+
+  .font-size-control {
+    max-width: var(--settings-control-width);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    align-items: center;
+    gap: 10px;
+  }
+
+  output {
     color: var(--muted);
-    font-size: 0.8571rem;
-    pointer-events: none;
-    transform: translateY(-50%);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .switch-row :global(.gds-toggle) {
+    width: 38px;
+  }
+
+  @media (max-width: 680px) {
+    .settings-workspace {
+      width: calc(100% - 32px);
+      padding-top: 16px;
+    }
+
+    .preference-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    :global(.settings-select),
+    .font-size-control,
+    .switch-row :global(.gds-toggle) {
+      justify-self: stretch;
+    }
   }
 </style>

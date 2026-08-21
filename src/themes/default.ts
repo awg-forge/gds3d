@@ -1,4 +1,27 @@
-import type { ThemeDefinition } from "./types";
+export type ThemeColors = {
+  bg: string;
+  bgSecondary: string;
+  bgTertiary: string;
+  primary: string;
+  primarySolid: string;
+  primarySolidHover: string;
+  secondary: string;
+  textPrimary: string;
+  textSecondary: string;
+  border: string;
+};
+
+export type ThemeDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  author: string;
+  version: string;
+  light: ThemeColors;
+  dark: ThemeColors;
+  lightAcrylic: ThemeColors;
+  darkAcrylic: ThemeColors;
+};
 
 const lightColors = {
   bg: "#f3f3f3",
@@ -29,7 +52,7 @@ const defaultTheme: ThemeDefinition = {
   id: "default",
   name: "Default",
   description: "Native platform colors",
-  author: "SeaLantern Team",
+  author: "AWGForge",
   version: "1.0.0",
   light: lightColors,
   dark: darkColors,

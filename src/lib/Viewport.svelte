@@ -1,11 +1,19 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import {
-    ArcRotateCamera, Color3, Color4, Engine, HemisphericLight, Mesh, MeshBuilder, Scene, StandardMaterial, Vector3,
-  } from "@babylonjs/core";
+  import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+  import { Color3 } from "@babylonjs/core/Maths/math.color";
+  import { Color4 } from "@babylonjs/core/Maths/math.color";
+  import { Engine } from "@babylonjs/core/Engines/engine";
+  import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+  import { Mesh } from "@babylonjs/core/Meshes/mesh";
+  import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+  import { Scene } from "@babylonjs/core/scene";
+  import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+  import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+  import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
 
-  interface Props { objects: unknown[] }
-  let { objects }: Props = $props();
+  interface Props { objects: unknown[]; onSelect?: (id: string | null) => void }
+  let { objects, onSelect }: Props = $props();
   let canvas = $state<HTMLCanvasElement>();
   let scene: Scene | null = null;
   let meshes: Mesh[] = [];
@@ -42,7 +50,7 @@
       }
       if (layerMeshes.length > 0) {
         const merged = Mesh.MergeMeshes(layerMeshes, true, true);
-        if (merged) { merged.name = payload.id ?? "layer"; merged.material = material; meshes.push(merged); }
+        if (merged) { merged.name = payload.id ?? "layer"; merged.material = material; merged.metadata = { objectId: payload.id }; meshes.push(merged); }
       } else {
         material.dispose();
       }
@@ -57,12 +65,19 @@
     const camera = new ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 100, Vector3.Zero(), scene);
     camera.attachControl(canvas, true);
     camera.wheelPrecision = 30;
+    const resetCamera = () => { camera.alpha = -Math.PI / 2; camera.beta = Math.PI / 3; camera.radius = 100; camera.setTarget(Vector3.Zero()); };
+    window.addEventListener("gds3d-reset-camera", resetCamera);
     new HemisphericLight("light", new Vector3(0, 1, 0), scene).intensity = 1.1;
+    scene.onPointerObservable.add((event) => {
+      if (event.type !== PointerEventTypes.POINTERPICK) return;
+      const id = event.pickInfo?.hit ? (event.pickInfo.pickedMesh?.metadata?.objectId as string | undefined) : undefined;
+      onSelect?.(id ?? null);
+    });
     renderObjects();
     engine.runRenderLoop(() => scene?.render());
     const resize = () => engine.resize();
     window.addEventListener("resize", resize);
-    return () => { window.removeEventListener("resize", resize); clearMeshes(); scene?.dispose(); engine.dispose(); scene = null; };
+    return () => { window.removeEventListener("resize", resize); window.removeEventListener("gds3d-reset-camera", resetCamera); clearMeshes(); scene?.dispose(); engine.dispose(); scene = null; };
   });
 
   $effect(() => { objects; renderObjects(); });

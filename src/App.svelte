@@ -41,6 +41,11 @@
     catch (reason) { error = reason instanceof Error ? reason.message : String(reason); }
   }
 
+  async function toggleSelectedVisibility(id: string, visible: boolean) {
+    try { scene = await updateObjectDisplay({ objectId: id, visible }); }
+    catch (reason) { error = reason instanceof Error ? reason.message : String(reason); }
+  }
+
   function resetCamera() { window.dispatchEvent(new CustomEvent("gds3d-reset-camera")); }
 </script>
 
@@ -51,6 +56,7 @@
   <section class="workspace">
     <aside class="sidebar"><h2>Layers</h2>
       {#if fileInfo}{#each fileInfo.cells as cell}<h3>{cell.name}</h3>{#each cell.layers as layer}<div class="layer-row"><span>L{layer.selection.layer}/D{layer.selection.datatype}</span><small>{layer.polygon_count} polygons</small></div>{/each}{/each}{:else}<p class="muted">Open a GDS file to inspect its layers.</p>{/if}
+      {#if scene}<h2 class="scene-heading">Objects</h2>{#each scene.objects as entry}{#if (entry as { kind?: string; payload?: { id?: string; display?: { name?: string; visible?: boolean } } }).kind === "GdsLayer"}<div class:selected={selectedId === (entry as { payload?: { id?: string } }).payload?.id} class="object-row"><button class="object-name" onclick={() => (selectedId = (entry as { payload?: { id?: string } }).payload?.id ?? null)}>{(entry as { payload?: { display?: { name?: string }; id?: string } }).payload?.display?.name ?? "Layer"}</button><input type="checkbox" checked={(entry as { payload?: { display?: { visible?: boolean } } }).payload?.display?.visible ?? true} onchange={(event) => toggleSelectedVisibility((entry as { payload?: { id?: string } }).payload?.id ?? "", (event.currentTarget as HTMLInputElement).checked)} /></div>{/if}{/each}{/if}
     </aside>
     <section class="viewport">{#if scene}<Viewport objects={scene.objects} onSelect={(id) => (selectedId = id)} />{:else}<div class="viewport-placeholder"><div class="cube">◇</div><strong>Babylon viewport</strong><span>Waiting for a GDS scene</span></div>{/if}</section>
     <aside class="properties"><h2>Properties</h2>{#if selected}<p class="selected-name">{selected.payload?.display?.name ?? selected.payload?.id}</p><label>Color<input type="color" value={selected.payload?.display?.color ?? "#4c89c8"} onchange={(event) => updateSelected({ color: (event.currentTarget as HTMLInputElement).value })} /></label><label>Brightness<input type="range" min="0.1" max="2" step="0.05" value={selected.payload?.display?.brightness ?? 1} oninput={(event) => updateSelected({ brightness: Number((event.currentTarget as HTMLInputElement).value) })} /></label><p>Z: {selected.payload?.display?.z_min} → {selected.payload?.display?.z_max}</p>{:else if scene}<p>{scene.objects.length} objects</p><p class="muted">Click a layer in the viewport to inspect it.</p>{:else}<p class="muted">Nothing selected</p>{/if}</aside>

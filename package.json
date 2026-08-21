@@ -1,9 +1,9 @@
 {
-  "name": "sealantern-connect",
-  "version": "1.0.0",
+  "name": "gds3d",
+  "version": "0.1.4",
   "private": true,
-  "license": "Apache-2.0",
-  "repository": "https://github.com/SeaLantern-Studio/SeaLantern-Connect",
+  "license": "MIT",
+  "repository": "https://github.com/KercyDing/gds3d",
   "type": "module",
   "scripts": {
     "dev": "vite dev -c src/vite.config.ts",
@@ -21,6 +21,7 @@
     "fmt:check": "oxfmt -c src/.oxfmtrc.json --check src scripts package.json pnpm-workspace.yaml README.md"
   },
   "dependencies": {
+    "@babylonjs/core": "^8",
     "@lucide/svelte": "^1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-autostart": "^2",

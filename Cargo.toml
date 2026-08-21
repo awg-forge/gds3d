@@ -3,12 +3,12 @@ members = ["src-tauri"]
 resolver = "3"
 
 [workspace.package]
-version = "1.0.0"
-description = "A lightweight Minecraft Java Edition join client powered by sculk"
-repository = "https://github.com/SeaLantern-Studio/SeaLantern-Connect"
-authors = ["SeaLantern-Studio"]
+version = "0.1.4"
+description = "A 3D visualization editor for GDS layouts."
+repository = "https://github.com/KercyDing/gds3d"
+authors = ["AWGForge"]
 edition = "2024"
-license = "Apache-2.0"
+license = "MIT"
 
 [profile.release]
 opt-level = "z"

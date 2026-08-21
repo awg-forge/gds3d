@@ -1,5 +1,5 @@
 [package]
-name = "sealantern-connect"
+name = "gds3d"
 version.workspace = true
 description.workspace = true
 authors.workspace = true

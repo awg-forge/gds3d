@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@babylonjs/core':
+        specifier: ^8
+        version: 8.56.2
       '@lucide/svelte':
         specifier: ^1
         version: 1.28.0(svelte@5.56.8)
@@ -74,6 +77,9 @@ importers:
         version: 4.1.10(vite@8.2.0)
 
 packages:
+
+  '@babylonjs/core@8.56.2':
+    resolution: {integrity: sha512-UShs1pt8tSTLYOoITWclXPNrUZUpuHvB2Ur2L1D+uM8c9qaAYOi9gjkurOkQwIlbPGqwQHWImGEyiyix0mQ1dg==}
 
   '@emnapi/core@2.0.0-alpha.3':
     resolution: {integrity: sha512-AZypUeJ/yByuxyS7BlSNRDOMLMlROYtjYdIAuBmJssVz1UJDSeYxLrdizhXCFYhedC5bqd/ASy8EuNXbVVXp9g==}
@@ -156,6 +162,12 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
+  '@oxfmt/binding-darwin-x64@0.64.0':
+    resolution: {integrity: sha512-gCmuswrgrOSajV4HCRFkVCGIruPq8bjYuPYgSE2WQB3mD6XrdyZ3JMSRZCkQ8zCxOyGWriBo6QoZ5nmMHQ1BfA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [x64]
+    os: [darwin]
+
   '@oxfmt/binding-freebsd-x64@0.64.0':
     resolution: {integrity: sha512-Ab8g7a38pT0MMImjh7anRSTve6buWBIlcXIFBYa5xl4s6UxEgKSc2xOOhbGtLwvXnEi2PsEDGoJh3oUU7xkehQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -208,6 +220,13 @@ packages:
     cpu: [riscv64]
     os: [linux]
     libc: [musl]
+
+  '@oxfmt/binding-linux-s390x-gnu@0.64.0':
+    resolution: {integrity: sha512-/C9We3DXegowfLXtVCYHeNiU9azwCDr5cQkEtCVlc74vyn+lLQSPApJ1CZmxAduqeq/Oi3gQ+IVptyhCaTMtkQ==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [s390x]
+    os: [linux]
+    libc: [glibc]
 
   '@oxfmt/binding-linux-x64-gnu@0.64.0':
     resolution: {integrity: sha512-91KM2CeRWscIEHlj1NsW2WSnzGeq1Ehq+39bfDowTdkn+fcvK/x4Y1RcyqT7glyBjZio0ldkeCG6Usj3v7ASog==}
@@ -1085,6 +1104,8 @@ packages:
 
 snapshots:
 
+  '@babylonjs/core@8.56.2': {}
+
   '@emnapi/core@2.0.0-alpha.3':
     dependencies:
       '@emnapi/wasi-threads': 2.0.1
@@ -1164,6 +1185,9 @@ snapshots:
   '@oxfmt/binding-darwin-arm64@0.64.0':
     optional: true
 
+  '@oxfmt/binding-darwin-x64@0.64.0':
+    optional: true
+
   '@oxfmt/binding-freebsd-x64@0.64.0':
     optional: true
 
@@ -1186,6 +1210,9 @@ snapshots:
     optional: true
 
   '@oxfmt/binding-linux-riscv64-musl@0.64.0':
+    optional: true
+
+  '@oxfmt/binding-linux-s390x-gnu@0.64.0':
     optional: true
 
   '@oxfmt/binding-linux-x64-gnu@0.64.0':
@@ -1612,6 +1639,7 @@ snapshots:
       '@oxfmt/binding-android-arm-eabi': 0.64.0
       '@oxfmt/binding-android-arm64': 0.64.0
       '@oxfmt/binding-darwin-arm64': 0.64.0
+      '@oxfmt/binding-darwin-x64': 0.64.0
       '@oxfmt/binding-freebsd-x64': 0.64.0
       '@oxfmt/binding-linux-arm-gnueabihf': 0.64.0
       '@oxfmt/binding-linux-arm-musleabihf': 0.64.0
@@ -1620,6 +1648,7 @@ snapshots:
       '@oxfmt/binding-linux-ppc64-gnu': 0.64.0
       '@oxfmt/binding-linux-riscv64-gnu': 0.64.0
       '@oxfmt/binding-linux-riscv64-musl': 0.64.0
+      '@oxfmt/binding-linux-s390x-gnu': 0.64.0
       '@oxfmt/binding-linux-x64-gnu': 0.64.0
       '@oxfmt/binding-linux-x64-musl': 0.64.0
       '@oxfmt/binding-openharmony-arm64': 0.64.0

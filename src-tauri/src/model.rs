@@ -19,10 +19,12 @@ pub struct Bounds2d {
     pub max_y: f32,
 }
 
-/// A single closed 2D polygon ring from a GDS boundary-like element.
+/// A closed 2D polygon from a GDS boundary-like element.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Polygon2d {
     pub points: Vec<[f32; 2]>,
+    #[serde(default)]
+    pub holes: Vec<Vec<[f32; 2]>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -30,7 +32,8 @@ pub struct DisplayProperties {
     pub name: String,
     pub visible: bool,
     pub color: String,
-    pub brightness: f32,
+    #[serde(default = "default_opacity")]
+    pub opacity: f32,
     pub z_min: f32,
     pub z_max: f32,
     #[serde(default)]
@@ -41,9 +44,14 @@ pub struct DisplayProperties {
 pub struct DisplayDefaults {
     pub name: String,
     pub color: String,
-    pub brightness: f32,
+    #[serde(default = "default_opacity")]
+    pub opacity: f32,
     pub z_min: f32,
     pub z_max: f32,
+}
+
+fn default_opacity() -> f32 {
+    1.0
 }
 
 impl DisplayProperties {
@@ -53,14 +61,14 @@ impl DisplayProperties {
             defaults: DisplayDefaults {
                 name: name.clone(),
                 color: "#2D6CDF".to_owned(),
-                brightness: 1.0,
+                opacity: 1.0,
                 z_min: 0.0,
                 z_max: 15.0,
             },
             name,
             visible: true,
             color: "#2D6CDF".to_owned(),
-            brightness: 1.0,
+            opacity: 1.0,
             z_min: 0.0,
             z_max: 15.0,
         }
@@ -72,14 +80,14 @@ impl DisplayProperties {
             defaults: DisplayDefaults {
                 name: name.clone(),
                 color: "#5F6B78".to_owned(),
-                brightness: 1.0,
+                opacity: 1.0,
                 z_min: -20.0,
                 z_max: 0.0,
             },
             name,
             visible: true,
             color: "#5F6B78".to_owned(),
-            brightness: 1.0,
+            opacity: 1.0,
             z_min: -20.0,
             z_max: 0.0,
         }
@@ -922,7 +930,10 @@ fn path_polygon_from_points(points: &[[f32; 2]], width: f32) -> Option<Polygon2d
     }
 
     right.reverse();
-    let mut polygon = Polygon2d { points: left };
+    let mut polygon = Polygon2d {
+        points: left,
+        holes: Vec::new(),
+    };
     polygon.points.extend(right);
     polygon_bounds(&polygon)?;
     Some(polygon)
@@ -951,6 +962,11 @@ fn average_normal(previous: [f32; 2], next: [f32; 2]) -> [f32; 2] {
 fn transform_polygon(polygon: &Polygon2d, transform: Transform2d) -> Option<Polygon2d> {
     let mut transformed = Polygon2d {
         points: Vec::with_capacity(polygon.points.len()),
+        holes: polygon
+            .holes
+            .iter()
+            .map(|hole| Vec::with_capacity(hole.len()))
+            .collect(),
     };
     for point in &polygon.points {
         let next = transform.apply(*point);
@@ -961,6 +977,16 @@ fn transform_polygon(polygon: &Polygon2d, transform: Transform2d) -> Option<Poly
             continue;
         }
         transformed.points.push(next);
+    }
+
+    for (hole, transformed_hole) in polygon.holes.iter().zip(&mut transformed.holes) {
+        for point in hole {
+            let next = transform.apply(*point);
+            if !next[0].is_finite() || !next[1].is_finite() {
+                return None;
+            }
+            transformed_hole.push(next);
+        }
     }
 
     if transformed.points.len() >= 2 && transformed.points.first() == transformed.points.last() {
@@ -977,7 +1003,10 @@ fn polygon_from_points(
     points: impl IntoIterator<Item = GdsPoint>,
     coordinate_scale: f32,
 ) -> Option<Polygon2d> {
-    let mut polygon = Polygon2d { points: Vec::new() };
+    let mut polygon = Polygon2d {
+        points: Vec::new(),
+        holes: Vec::new(),
+    };
     for point in points {
         let x = point.x as f32 * coordinate_scale;
         let y = point.y as f32 * coordinate_scale;

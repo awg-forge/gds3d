@@ -171,10 +171,7 @@ fn serialize_object(obj: &SceneObject) -> Value {
             payload.insert("z_min".to_owned(), Value::from(layer.display.z_min));
             payload.insert("z_max".to_owned(), Value::from(layer.display.z_max));
             payload.insert("color".to_owned(), Value::from(layer.display.color.clone()));
-            payload.insert(
-                "brightness".to_owned(),
-                Value::from(layer.display.brightness),
-            );
+            payload.insert("opacity".to_owned(), Value::from(layer.display.opacity));
             payload.insert("visible".to_owned(), Value::from(layer.display.visible));
             archive_object_with_scene("gds_layer", payload, scene_object)
         }
@@ -194,10 +191,7 @@ fn serialize_object(obj: &SceneObject) -> Value {
                 "color".to_owned(),
                 Value::from(baseplate.display.color.clone()),
             );
-            payload.insert(
-                "brightness".to_owned(),
-                Value::from(baseplate.display.brightness),
-            );
+            payload.insert("opacity".to_owned(), Value::from(baseplate.display.opacity));
             payload.insert("visible".to_owned(), Value::from(baseplate.display.visible));
             archive_object_with_scene("baseplate", payload, scene_object)
         }

@@ -7,10 +7,10 @@
 
 [help] 启动开发模式
 dev(level = "info") ? @os("windows") shell~=pwsh:
-    $env:SL_LOG = "{{level}}"; pnpm tauri dev
+    $env:GDS3D_LOG = "{{level}}"; pnpm tauri dev
 
 dev(level = "info"):
-    SL_LOG={{level}} pnpm tauri dev
+    GDS3D_LOG={{level}} pnpm tauri dev
 
 [help] 构建应用
 build() ? @os("macos"):

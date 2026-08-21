@@ -10,7 +10,6 @@
     "core:window:allow-maximize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
-    "dialog:default",
-    "opener:default"
+    "dialog:default"
   ]
 }

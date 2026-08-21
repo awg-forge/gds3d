@@ -1,22 +1,5 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "SeaLantern Connect",
-        "width": 1200,
-        "height": 720,
-        "minWidth": 1000,
-        "minHeight": 625,
-        "center": true,
-        "visible": false,
-        "transparent": true,
-        "backgroundColor": "#00000000",
-        "decorations": false
-      }
-    ]
-  },
   "bundle": {
     "targets": ["nsis"],
     "icon": [

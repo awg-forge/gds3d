@@ -148,8 +148,8 @@ async function generateNotice(): Promise<void> {
   };
   const [frontend, backend] = await Promise.all([frontendLicenses(), backendLicenses()]);
   const lines = [
-    "SeaLantern Connect",
-    "Copyright (C) 2026 SeaLantern Studio",
+    "gds3d",
+    "Copyright (C) 2026 AWG Forge",
     "Licensed under the Apache License, Version 2.0.",
     "",
     "---",
@@ -177,7 +177,7 @@ async function generateNotice(): Promise<void> {
 
   lines.push("", "---", "", "Third-party backend dependencies:", "");
   const crates = backend
-    .filter((crate) => crate.name !== "sealantern-connect")
+    .filter((crate) => crate.name !== "gds3d")
     .toSorted((left, right) =>
       `${left.name}@${left.version}`.localeCompare(`${right.name}@${right.version}`),
     );

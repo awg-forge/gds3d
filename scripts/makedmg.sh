@@ -31,7 +31,7 @@ if [[ -z "${dmg_path}" || ! -f "${dmg_path}" ]]; then
 fi
 
 dmg_path="$(cd "$(dirname "${dmg_path}")" && pwd)/$(basename "${dmg_path}")"
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/sealantern-dmg-layout.XXXXXX")"
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/gds3d-dmg-layout.XXXXXX")"
 shadow_path="${work_dir}/layout.shadow"
 fixed_path="${work_dir}/fixed.dmg"
 front_app_id="$(osascript -e \

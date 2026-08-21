@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-readonly package_name="sealantern-connect"
+readonly package_name="gds3d"
 readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly repo_dir="$(cd -- "${script_dir}/.." && pwd)"
 readonly output_dir="${repo_dir}/target/release/bundle/archlinux"
@@ -74,9 +74,9 @@ write_pkgbuild() {
 pkgname='${package_name}'
 pkgver='${package_version}'
 pkgrel=1
-pkgdesc='Lightweight Minecraft Java Edition P2P multiplayer client powered by sculk'
+pkgdesc='GDSII three-dimensional visualization tool'
 arch=('${package_arch}')
-url='https://github.com/SeaLantern-Studio/SeaLantern-Connect'
+url='https://github.com/KercyDing/gds3d'
 license=('Apache-2.0')
 depends=('glibc' 'gcc-libs' 'webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'librsvg')
 options=('!strip')
@@ -114,7 +114,7 @@ build_package() {
     find_deb
 
     mkdir -p "${output_dir}"
-    build_dir="$(mktemp -d "${TMPDIR:-/tmp}/sealantern-arch.XXXXXX")"
+    build_dir="$(mktemp -d "${TMPDIR:-/tmp}/gds3d-arch.XXXXXX")"
     (
         trap 'rm -rf -- "${build_dir}"' EXIT
         source_name="${package_name}-${version}-${package_arch}.deb"

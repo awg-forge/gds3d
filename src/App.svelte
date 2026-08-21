@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Camera, FolderOpen, Save, Upload } from "@lucide/svelte";
+  import { Camera, FolderOpen, Languages, Save, Upload } from "@lucide/svelte";
   import { onMount } from "svelte";
   import {
     chooseGdsPath,
@@ -18,6 +18,7 @@
   import ColorPicker from "./lib/components/ui/ColorPicker.svelte";
   import Slider from "./lib/components/ui/Slider.svelte";
   import Viewport from "./lib/Viewport.svelte";
+  import { locale, setLocale, t } from "./i18n";
 
   type Entry = {
     kind?: string;
@@ -119,6 +120,10 @@
   function resetCamera() {
     window.dispatchEvent(new CustomEvent("gds3d-reset-camera"));
   }
+
+  function toggleLocale() {
+    setLocale($locale === "zh-CN" ? "en" : "zh-CN");
+  }
 </script>
 
 <svelte:head><title>gds3d</title></svelte:head>
@@ -127,26 +132,34 @@
   <header class="gds-toolbar">
     <strong class="gds-brand">gds3d</strong>
     <div class="gds-actions">
-      <Button size="sm" loading={busy} onclick={chooseGds}><FolderOpen size={16} />Open GDS</Button>
+      <Button size="sm" loading={busy} onclick={chooseGds}
+        ><FolderOpen size={16} />{t("gds.openGds")}</Button
+      >
       <Button size="sm" variant="outline" onclick={openProject}
-        ><Upload size={16} />Open project</Button
+        ><Upload size={16} />{t("gds.openProject")}</Button
       >
       <Button size="sm" variant="outline" disabled={!scene} onclick={saveCurrentProject}
-        ><Save size={16} />Save project</Button
+        ><Save size={16} />{t("gds.saveProject")}</Button
       >
       <Button size="sm" variant="ghost" onclick={resetCamera}
-        ><Camera size={16} />Reset camera</Button
+        ><Camera size={16} />{t("gds.resetCamera")}</Button
       >
     </div>
-    <span class="gds-path" title={selectedPath ?? undefined}
-      >{selectedPath ?? "No file loaded"}</span
+    <span class="gds-path" title={selectedPath ?? undefined}>{selectedPath ?? t("gds.noFile")}</span
+    >
+    <Button
+      class="gds-locale-button"
+      size="sm"
+      variant="ghost"
+      title={t($locale === "zh-CN" ? "gds.switchToEnglish" : "gds.switchToChinese")}
+      onclick={toggleLocale}><Languages size={16} />{$locale === "zh-CN" ? "EN" : "中"}</Button
     >
   </header>
 
   <section class="gds-workbench">
     <aside class="gds-panel gds-layers">
       <div class="gds-heading">
-        <h2>Layers</h2>
+        <h2>{t("gds.layers")}</h2>
         <span>{objects.length}</span>
       </div>
       {#if fileInfo}
@@ -155,7 +168,7 @@
             <h3>{cell.name}</h3>
             {#each cell.layers as layer}<div class="gds-layer">
                 <span>L{layer.selection.layer}/D{layer.selection.datatype}</span><small
-                  >{layer.polygon_count} polygons</small
+                  >{t("gds.polygonCount", { count: layer.polygon_count })}</small
                 >
               </div>{/each}
           </section>
@@ -170,10 +183,11 @@
                 class="gds-object-button"
                 variant="ghost"
                 size="sm"
-                onclick={() => (selectedId = id)}>{item.payload?.display?.name ?? "Layer"}</Button
+                onclick={() => (selectedId = id)}
+                >{item.payload?.display?.name ?? t("gds.layer")}</Button
               >
               <input
-                aria-label="Toggle layer visibility"
+                aria-label={t("gds.toggleVisibility")}
                 type="checkbox"
                 checked={item.payload?.display?.visible ?? true}
                 onchange={(event) =>
@@ -182,27 +196,33 @@
             </div>
           {/each}
         </div>
-      {:else}<p class="gds-empty">Open a GDS file to inspect its layers.</p>{/if}
+      {:else}<p class="gds-empty">{t("gds.openToInspect")}</p>{/if}
     </aside>
 
     <section class="gds-viewport">
       {#if scene}<Viewport
           objects={scene.objects}
+          hints={{
+            controls: t("gds.controls"),
+            rotate: t("gds.rotateHint"),
+            pan: t("gds.panHint"),
+            zoom: t("gds.zoomHint"),
+          }}
           onSelect={(id) => (selectedId = id)}
         />{:else}<div class="gds-viewport-empty">
-          <FolderOpen size={32} /><strong>Open a GDS layout</strong><span
-            >Its 3D scene will appear here.</span
+          <FolderOpen size={32} /><strong>{t("gds.openLayout")}</strong><span
+            >{t("gds.sceneAppearsHere")}</span
           >
         </div>{/if}
     </section>
 
     <aside class="gds-panel gds-properties">
-      <div class="gds-heading"><h2>Properties</h2></div>
+      <div class="gds-heading"><h2>{t("gds.properties")}</h2></div>
       {#if selected}
         <div class="gds-property-grid">
           <h3>{selected.payload?.display?.name ?? selected.payload?.id}</h3>
           <div class="gds-property">
-            <span>Visible</span><input
+            <span>{t("gds.visible")}</span><input
               type="checkbox"
               checked={selected.payload?.display?.visible ?? true}
               onchange={(event) =>
@@ -210,31 +230,31 @@
             />
           </div>
           <div class="gds-property">
-            <span>Color</span><ColorPicker
-              label="Layer color"
+            <span>{t("gds.color")}</span><ColorPicker
+              label={t("gds.layerColor")}
               value={selected.payload?.display?.color ?? "#2D6CDF"}
               onvaluechange={(color) => updateSelected({ color })}
             />
           </div>
           <div class="gds-property-stack">
-            <span>Brightness</span><Slider
+            <span>{t("gds.brightness")}</span><Slider
               value={selected.payload?.display?.brightness ?? 1}
               min={0.05}
               max={2}
               step={0.05}
-              ariaLabel="Layer brightness"
+              ariaLabel={t("gds.brightness")}
               onvaluechange={(brightness) => updateSelected({ brightness })}
             />
           </div>
           <div class="gds-property">
-            <span>Z range</span><strong
+            <span>{t("gds.zRange")}</span><strong
               >{selected.payload?.display?.z_min} — {selected.payload?.display?.z_max}</strong
             >
           </div>
         </div>
       {:else if scene}<p class="gds-empty">
-          Select a layer in the viewport or layer panel to edit it.
-        </p>{:else}<p class="gds-empty">No scene loaded.</p>{/if}
+          {t("gds.selectLayer")}
+        </p>{:else}<p class="gds-empty">{t("gds.noScene")}</p>{/if}
     </aside>
   </section>
   {#if error}<div class="gds-error">{error}</div>{/if}
@@ -254,7 +274,7 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 18px;
+    gap: 14px;
     padding: 0 18px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
@@ -266,13 +286,18 @@
   .gds-actions {
     display: flex;
     gap: 8px;
+    flex: 0 0 auto;
   }
   .gds-path {
+    flex: 1;
     min-width: 0;
     overflow: hidden;
     color: var(--muted);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .gds-locale-button {
+    flex: 0 0 auto;
   }
   .gds-workbench {
     min-height: 0;
@@ -357,7 +382,14 @@
   .gds-viewport {
     min-width: 0;
     min-height: 0;
-    background: var(--surface-soft);
+    padding: 10px;
+    background:
+      radial-gradient(
+        circle at 50% 20%,
+        color-mix(in srgb, var(--primary) 6%, transparent),
+        transparent 46%
+      ),
+      var(--surface-soft);
   }
   .gds-viewport-empty {
     width: 100%;

@@ -2,6 +2,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
   import { getSceneSnapshot, importGds, inspectGdsFile, type GdsFileInfo, type SceneSnapshot } from "@api/gds";
+  import Viewport from "./lib/Viewport.svelte";
 
   let fileInfo = $state<GdsFileInfo | null>(null);
   let scene = $state<SceneSnapshot | null>(null);
@@ -29,7 +30,7 @@
     <aside class="sidebar"><h2>Layers</h2>
       {#if fileInfo}{#each fileInfo.cells as cell}<h3>{cell.name}</h3>{#each cell.layers as layer}<div class="layer-row"><span>L{layer.selection.layer}/D{layer.selection.datatype}</span><small>{layer.polygon_count} polygons</small></div>{/each}{/each}{:else}<p class="muted">Open a GDS file to inspect its layers.</p>{/if}
     </aside>
-    <section class="viewport"><div class="viewport-placeholder"><div class="cube">◇</div><strong>Babylon viewport</strong>{#if scene}<span>{scene.objects.length} scene objects loaded</span>{:else}<span>Waiting for a GDS scene</span>{/if}</div></section>
+    <section class="viewport">{#if scene}<Viewport objects={scene.objects} />{:else}<div class="viewport-placeholder"><div class="cube">◇</div><strong>Babylon viewport</strong><span>Waiting for a GDS scene</span></div>{/if}</section>
     <aside class="properties"><h2>Properties</h2>{#if scene}<p>{scene.objects.length} objects</p>{:else}<p class="muted">Nothing selected</p>{/if}</aside>
   </section>
   {#if error}<div class="error">{error}</div>{/if}

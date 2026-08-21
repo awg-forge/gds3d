@@ -433,10 +433,6 @@
     "selectLayer": "Select a layer in the viewport or layer panel to edit it.",
     "noScene": "No scene loaded.",
     "viewportLabel": "GDS 3D viewport",
-    "controls": "Viewport controls",
-    "rotateHint": "Left drag: orbit",
-    "panHint": "Right drag: pan",
-    "zoomHint": "Mouse wheel: zoom",
     "switchToEnglish": "Switch to English",
     "switchToChinese": "切换至中文"
   }

@@ -15,15 +15,9 @@
 
   interface Props {
     objects: unknown[];
-    hints: {
-      controls: string;
-      rotate: string;
-      pan: string;
-      zoom: string;
-    };
     onSelect?: (id: string | null) => void;
   }
-  let { objects, hints, onSelect }: Props = $props();
+  let { objects, onSelect }: Props = $props();
   let canvas = $state<HTMLCanvasElement>();
   let scene: Scene | null = null;
   let camera: ArcRotateCamera | null = null;
@@ -144,7 +138,7 @@
     activeCamera.attachControl(viewportCanvas, true);
     activeCamera.wheelDeltaPercentage = 0.01;
     activeCamera.panningMouseButton = 2;
-    activeCamera.panningSensibility = 180;
+    activeCamera.panningSensibility = 60;
     activeCamera.lowerRadiusLimit = 0.01;
     activeCamera.upperRadiusLimit = Number.MAX_SAFE_INTEGER;
     const resetCamera = () => {
@@ -200,12 +194,6 @@
 
 <div class="viewport-frame">
   <canvas bind:this={canvas} aria-label="GDS 3D viewport"></canvas>
-  <div class="viewport-controls" aria-hidden="true">
-    <strong>{hints.controls}</strong>
-    <span>{hints.rotate}</span>
-    <span>{hints.pan}</span>
-    <span>{hints.zoom}</span>
-  </div>
 </div>
 
 <style>
@@ -227,26 +215,5 @@
   }
   canvas:active {
     cursor: grabbing;
-  }
-  .viewport-controls {
-    position: absolute;
-    right: 12px;
-    bottom: 12px;
-    display: grid;
-    gap: 3px;
-    max-width: 230px;
-    padding: 9px 11px;
-    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-    border-radius: 8px;
-    color: var(--muted);
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    box-shadow: var(--shadow);
-    font-size: 0.75rem;
-    line-height: 1.35;
-    pointer-events: none;
-  }
-  .viewport-controls strong {
-    color: var(--text);
-    font-size: 0.78rem;
   }
 </style>

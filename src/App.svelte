@@ -202,12 +202,6 @@
     <section class="gds-viewport">
       {#if scene}<Viewport
           objects={scene.objects}
-          hints={{
-            controls: t("gds.controls"),
-            rotate: t("gds.rotateHint"),
-            pan: t("gds.panHint"),
-            zoom: t("gds.zoomHint"),
-          }}
           onSelect={(id) => (selectedId = id)}
         />{:else}<div class="gds-viewport-empty">
           <FolderOpen size={32} /><strong>{t("gds.openLayout")}</strong><span

@@ -433,10 +433,6 @@
     "selectLayer": "在视图或图层面板中选择图层以编辑。",
     "noScene": "尚未加载场景。",
     "viewportLabel": "GDS 三维视图",
-    "controls": "视图操作",
-    "rotateHint": "左键拖拽：旋转",
-    "panHint": "右键拖拽：平移",
-    "zoomHint": "滚轮：缩放",
     "switchToEnglish": "Switch to English",
     "switchToChinese": "切换至中文"
   }

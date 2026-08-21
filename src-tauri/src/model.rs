@@ -1054,7 +1054,7 @@ mod tests {
 
     #[test]
     fn imports_gds_layers() {
-        let objects = import_gds_layers(Path::new("models/AWG.gds")).expect("import sample GDS");
+        let objects = import_gds_layers(Path::new("../models/AWG.gds")).expect("import sample GDS");
         assert!(!objects.is_empty());
         for obj in objects {
             let SceneObject::GdsLayer(layer) = obj else {
@@ -1204,7 +1204,7 @@ mod tests {
 
     #[test]
     fn inspects_top_cells() {
-        let info = inspect_gds_file(Path::new("models/AWG_0.8nmCS_16CH_0nmOS.gds"))
+        let info = inspect_gds_file(Path::new("../models/AWG_0.8nmCS_16CH_0nmOS.gds"))
             .expect("inspect sample GDS");
 
         assert!(info.cells.iter().any(|cell| cell.name == "AWG"));

@@ -204,7 +204,11 @@ fn serialize_object(obj: &SceneObject) -> Value {
     }
 }
 
-fn archive_object_with_scene(kind: &str, mut payload: Map<String, Value>, scene_object: Value) -> Value {
+fn archive_object_with_scene(
+    kind: &str,
+    mut payload: Map<String, Value>,
+    scene_object: Value,
+) -> Value {
     payload.insert("scene_object".to_owned(), scene_object);
     archive_object(kind, payload)
 }
@@ -518,7 +522,7 @@ mod tests {
         let temp_dir = std::env::temp_dir().join(format!("gds3d-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&temp_dir).expect("create temp dir");
         let archive_path = temp_dir.join("project.gds3d");
-        let gds_path = PathBuf::from("models/AWG.gds");
+        let gds_path = PathBuf::from("../models/AWG.gds");
         let obj = SceneObject::GdsLayer(GdsLayerObject {
             id: "00000000000000000000000000000001".to_owned(),
             display: DisplayProperties::gds_layer("L4/1"),
@@ -549,7 +553,7 @@ mod tests {
             payload
                 .get("display_path")
                 .and_then(serde_json::Value::as_str),
-            Some("models/AWG.gds")
+            Some("../models/AWG.gds")
         );
         assert_eq!(sources.len(), 1);
         assert!(sources.values().next().is_some_and(|data| !data.is_empty()));

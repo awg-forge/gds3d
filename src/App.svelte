@@ -343,7 +343,7 @@
   .gds-object.selected {
     background: color-mix(in srgb, var(--primary) 12%, transparent);
   }
-  .gds-object-button {
+  .gds-object :global(.gds-object-button) {
     width: 100%;
     justify-content: flex-start;
     overflow: hidden;

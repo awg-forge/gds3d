@@ -3,9 +3,11 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod desktop;
+mod archive;
 mod download;
 mod frp;
 mod logging;
+mod model;
 mod p2p;
 mod settings;
 mod toolbox;

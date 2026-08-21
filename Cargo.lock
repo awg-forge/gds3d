@@ -1962,10 +1962,14 @@ dependencies = [
 name = "gds3d"
 version = "0.1.4"
 dependencies = [
+ "anyhow",
  "base64 0.23.1",
+ "crc32fast",
  "crypto_box",
  "flate2",
  "fontdb",
+ "gdsii",
+ "indexmap 2.14.0",
  "iroh",
  "keyring",
  "log",
@@ -1988,8 +1992,19 @@ dependencies = [
  "tauri-plugin-window-state",
  "tempfile",
  "tokio",
+ "uuid",
  "windows-sys 0.61.2",
  "zip 8.6.0",
+]
+
+[[package]]
+name = "gdsii"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73dcd4fb689b0cae2e99a3d8f007b700e48a11f9506ee096f9b59f3dba0f9b4c"
+dependencies = [
+ "thiserror 2.0.20",
+ "zerocopy",
 ]
 
 [[package]]
@@ -7958,6 +7973,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1afec51604565183aeb5c54c20aeab286120d4e4460f7f76e3e8bb8c0d99473"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.56"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "556764e583adb45a9f8d413c2a147fa7e8d821e48e12b14fd560b607998b75eb"
+dependencies = [
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.56"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2ab42fc20575779bd240faa45f94a74256f755c0fa9e89f0ede20d91d0cdfc1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

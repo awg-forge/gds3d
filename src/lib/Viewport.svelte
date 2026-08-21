@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
-    ArcRotateCamera, Color3, Color4, Engine, HemisphericLight, MeshBuilder, Scene, StandardMaterial, Vector3,
+    ArcRotateCamera, Color3, Color4, Engine, HemisphericLight, Mesh, MeshBuilder, Scene, StandardMaterial, Vector3,
   } from "@babylonjs/core";
 
   interface Props { objects: unknown[] }
   let { objects }: Props = $props();
   let canvas = $state<HTMLCanvasElement>();
   let scene: Scene | null = null;
-  let meshes: ReturnType<typeof MeshBuilder.CreatePolygon>[] = [];
+  let meshes: Mesh[] = [];
 
   function clearMeshes() {
     for (const mesh of meshes) mesh.dispose();
@@ -22,21 +22,29 @@
       const record = entry as { kind?: string; payload?: { id?: string; display?: { color?: string; brightness?: number; visible?: boolean; z_min?: number; z_max?: number }; polygons?: { points: number[][] }[] } };
       if (record.kind !== "GdsLayer" || !record.payload?.display?.visible) continue;
       const payload = record.payload;
+      const layerMeshes: Mesh[] = [];
+      const material = new StandardMaterial(`${payload.id ?? "layer"}-material`, scene);
+      const color = Color3.FromHexString(payload.display?.color ?? "#4c89c8");
+      const brightness = payload.display?.brightness ?? 1;
+      material.diffuseColor = color.scale(brightness);
+      material.alpha = Math.min(1, Math.max(0.05, brightness));
+      material.backFaceCulling = false;
+      if (material.alpha < 1) material.needDepthPrePass = true;
       for (const [index, polygon] of (payload.polygons ?? []).entries()) {
         if (polygon.points.length < 3) continue;
         const shape = polygon.points.map(([x, y]) => new Vector3(x, 0, y));
         const depth = Math.max(0.001, (payload.display?.z_max ?? 1) - (payload.display?.z_min ?? 0));
         const mesh = MeshBuilder.ExtrudePolygon(`${payload.id ?? "layer"}-${index}`, { shape, depth }, scene);
         mesh.position.y = payload.display?.z_min ?? 0;
-        const material = new StandardMaterial(`${mesh.name}-material`, scene);
-        const color = Color3.FromHexString(payload.display?.color ?? "#4c89c8");
-        const brightness = payload.display?.brightness ?? 1;
-        material.diffuseColor = color.scale(brightness);
-        material.alpha = Math.min(1, Math.max(0.05, brightness));
-        material.backFaceCulling = false;
-        if (material.alpha < 1) { material.needDepthPrePass = true; mesh.visibility = material.alpha; }
+        mesh.visibility = material.alpha;
         mesh.material = material;
-        meshes.push(mesh);
+        layerMeshes.push(mesh);
+      }
+      if (layerMeshes.length > 0) {
+        const merged = Mesh.MergeMeshes(layerMeshes, true, true);
+        if (merged) { merged.name = payload.id ?? "layer"; merged.material = material; meshes.push(merged); }
+      } else {
+        material.dispose();
       }
     }
   }

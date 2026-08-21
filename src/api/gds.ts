@@ -12,3 +12,4 @@ export function importGds(path: string): Promise<SceneSnapshot> { return invoke(
 export function getSceneSnapshot(): Promise<SceneSnapshot> { return invoke("scene_snapshot"); }
 export function updateObjectDisplay(update: { objectId: string; color?: string; brightness?: number; visible?: boolean; zMin?: number; zMax?: number }): Promise<SceneSnapshot> { return invoke("update_object_display", { update }); }
 export function saveProject(path: string): Promise<void> { return invoke("save_project", { path }); }
+export function loadProject(path: string): Promise<SceneSnapshot> { return invoke("load_project", { path }); }

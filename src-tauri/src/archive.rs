@@ -35,6 +35,21 @@ pub struct ArchiveObject {
 
 pub type ArchiveData = (Vec<ArchiveObject>, HashMap<String, Vec<u8>>);
 
+pub fn read_scene_objects(file_path: &Path) -> anyhow::Result<Vec<SceneObject>> {
+    let (objects, _) = read_archive(file_path)?;
+    objects
+        .into_iter()
+        .map(|object| {
+            object
+                .payload
+                .get("scene_object")
+                .cloned()
+                .ok_or_else(|| anyhow!("project object is missing geometry"))
+                .and_then(|value| serde_json::from_value(value).context("parse project object"))
+        })
+        .collect()
+}
+
 /// Write a `.gds3d` project archive with `scene.json` and embedded GDS sources.
 pub fn write_archive(file_path: &Path, objects: &[SceneObject]) -> anyhow::Result<()> {
     let path = normalize_output_path(file_path)?;
@@ -128,6 +143,7 @@ fn build_scene_payload(objects: &[SceneObject]) -> Map<String, Value> {
 }
 
 fn serialize_object(obj: &SceneObject) -> Value {
+    let scene_object = serde_json::to_value(obj).unwrap_or(Value::Null);
     let mut payload = Map::new();
     match obj {
         SceneObject::GdsLayer(layer) => {
@@ -160,7 +176,7 @@ fn serialize_object(obj: &SceneObject) -> Value {
                 Value::from(layer.display.brightness),
             );
             payload.insert("visible".to_owned(), Value::from(layer.display.visible));
-            archive_object("gds_layer", payload)
+            archive_object_with_scene("gds_layer", payload, scene_object)
         }
         SceneObject::Baseplate(baseplate) => {
             payload.insert("object_id".to_owned(), Value::from(baseplate.id.clone()));
@@ -183,9 +199,14 @@ fn serialize_object(obj: &SceneObject) -> Value {
                 Value::from(baseplate.display.brightness),
             );
             payload.insert("visible".to_owned(), Value::from(baseplate.display.visible));
-            archive_object("baseplate", payload)
+            archive_object_with_scene("baseplate", payload, scene_object)
         }
     }
+}
+
+fn archive_object_with_scene(kind: &str, mut payload: Map<String, Value>, scene_object: Value) -> Value {
+    payload.insert("scene_object".to_owned(), scene_object);
+    archive_object(kind, payload)
 }
 
 fn archive_object(kind: &str, payload: Map<String, Value>) -> Value {

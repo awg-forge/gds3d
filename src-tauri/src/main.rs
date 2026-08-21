@@ -92,6 +92,15 @@ fn save_project(path: String, state: tauri::State<'_, SceneState>) -> Result<(),
     archive::write_archive(Path::new(&path), &objects).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn load_project(path: String, state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, String> {
+    let objects = archive::read_scene_objects(Path::new(&path)).map_err(|error| error.to_string())?;
+    let mut scene = state.0.lock().map_err(|_| "scene state is unavailable".to_owned())?;
+    *scene = model::Scene::default();
+    for object in objects { scene.add(object).map_err(|error| error.to_string())?; }
+    Ok(snapshot(&scene))
+}
+
 #[cfg(all(target_os = "windows", debug_assertions))]
 fn attach_parent_console() {
     use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
@@ -216,6 +225,7 @@ fn main() {
             scene_snapshot,
             update_object_display,
             save_project,
+            load_project,
             p2p::get_p2p_status,
             stop_tunnel,
             restart_application,

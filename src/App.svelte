@@ -1,7 +1,7 @@
 <script lang="ts">
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
-  import { getSceneSnapshot, importGds, inspectGdsFile, saveProject, updateObjectDisplay, type GdsFileInfo, type SceneSnapshot } from "@api/gds";
+  import { getSceneSnapshot, importGds, inspectGdsFile, loadProject, saveProject, updateObjectDisplay, type GdsFileInfo, type SceneSnapshot } from "@api/gds";
   import Viewport from "./lib/Viewport.svelte";
 
   let fileInfo = $state<GdsFileInfo | null>(null);
@@ -35,6 +35,13 @@
     try { await saveProject(path); } catch (reason) { error = reason instanceof Error ? reason.message : String(reason); }
   }
 
+  async function openProject() {
+    const path = await open({ multiple: false, filters: [{ name: "gds3d project", extensions: ["gds3d"] }] });
+    if (typeof path !== "string") return;
+    try { scene = await loadProject(path); selectedId = null; selectedPath = path; }
+    catch (reason) { error = reason instanceof Error ? reason.message : String(reason); }
+  }
+
   async function updateSelected(update: { color?: string; brightness?: number }) {
     if (!selectedId) return;
     try { scene = await updateObjectDisplay({ objectId: selectedId, ...update }); }
@@ -52,7 +59,7 @@
 <svelte:head><title>gds3d</title></svelte:head>
 
 <main class="app-shell">
-  <header class="toolbar"><div class="brand">gds3d</div><button onclick={chooseGds} disabled={busy}>{busy ? "Loading…" : "Open GDS"}</button><button class="secondary" onclick={saveCurrentProject} disabled={!scene}>Save project</button><button class="secondary" onclick={resetCamera}>Reset camera</button>{#if selectedPath}<span class="path">{selectedPath}</span>{/if}</header>
+  <header class="toolbar"><div class="brand">gds3d</div><button onclick={chooseGds} disabled={busy}>{busy ? "Loading…" : "Open GDS"}</button><button class="secondary" onclick={openProject}>Open project</button><button class="secondary" onclick={saveCurrentProject} disabled={!scene}>Save project</button><button class="secondary" onclick={resetCamera}>Reset camera</button>{#if selectedPath}<span class="path">{selectedPath}</span>{/if}</header>
   <section class="workspace">
     <aside class="sidebar"><h2>Layers</h2>
       {#if fileInfo}{#each fileInfo.cells as cell}<h3>{cell.name}</h3>{#each cell.layers as layer}<div class="layer-row"><span>L{layer.selection.layer}/D{layer.selection.datatype}</span><small>{layer.polygon_count} polygons</small></div>{/each}{/each}{:else}<p class="muted">Open a GDS file to inspect its layers.</p>{/if}

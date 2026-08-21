@@ -11,7 +11,7 @@
   },
   "app": {
     "enableGTKAppId": true,
-    "macOSPrivateApi": true,
+    "macOSPrivateApi": false,
     "windows": [
       {
         "label": "main",
@@ -21,8 +21,8 @@
         "minWidth": 1000,
         "minHeight": 625,
         "center": true,
-        "visible": false,
-        "decorations": false
+        "visible": true,
+        "decorations": true
       }
     ],
     "security": {

@@ -1,53 +1,116 @@
-name: Check
+name: "代码质量检查"
 
 on:
-  push:
   pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
-  rust:
-    name: Rust
-    runs-on: ubuntu-24.04
+  changes:
+    name: 检测变更范围
+    runs-on: ubuntu-22.04
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
+      - name: 检出代码
+        uses: actions/checkout@v7
 
-      - name: Set up Rust
+      - name: 检测变更文件
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'src-tauri/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'rustfmt.toml'
+              - '.github/workflows/check.yml'
+            frontend:
+              - 'src/**'
+              - 'svelte.config.js'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/check.yml'
+
+  backend:
+    name: 后端检查 (Rust)
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf nasm
+
+      - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+      - name: 缓存 Rust 编译产物
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
 
-      - name: Install Linux build libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libegl1 \
-            libgl1 \
-            libwayland-client0 \
-            libwayland-cursor0 \
-            libxkbcommon-dev \
-            libxkbcommon-x11-0 \
-            libxcb-cursor0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-render-util0 \
-            libxcb-xinerama0
-
-      - name: Check formatting
+      - name: 检查代码格式
         run: cargo fmt --all -- --check
 
-      - name: Check
-        run: cargo check --workspace --locked
+      - name: 运行 Clippy 检查
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Lint
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: 运行测试
+        run: cargo test --all-targets --workspace
 
-      - name: Test
-        run: cargo test --workspace --locked
+  frontend:
+    name: 前端检查 (Node)
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: 安装 pnpm
+        run: corepack enable
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 检查前端格式
+        run: pnpm fmt:check
+
+      - name: 运行前端 Lint
+        run: pnpm lint
+
+      - name: 运行前端测试
+        run: pnpm test
+
+      - name: 检查 Svelte 类型
+        run: pnpm check
+
+      - name: 构建前端
+        run: pnpm build

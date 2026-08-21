@@ -1,0 +1,52 @@
+{
+  "name": "sealantern-connect",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": "https://github.com/SeaLantern-Studio/SeaLantern-Connect",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev -c src/vite.config.ts",
+    "build": "vite build -c src/vite.config.ts",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "notice": "node scripts/notice.ts",
+    "sv": "node scripts/version.ts show",
+    "cv": "node scripts/version.ts change",
+    "tauri": "tauri",
+    "lint": "oxlint -c src/.oxlintrc.json src scripts",
+    "lint:fix": "oxlint -c src/.oxlintrc.json --fix src scripts",
+    "check": "svelte-check --workspace . --tsconfig src/tsconfig.json",
+    "fmt": "oxfmt -c src/.oxfmtrc.json src scripts package.json pnpm-workspace.yaml README.md",
+    "fmt:check": "oxfmt -c src/.oxfmtrc.json --check src scripts package.json pnpm-workspace.yaml README.md"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-autostart": "^2",
+    "@tauri-apps/plugin-deep-link": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-updater": "^2",
+    "bits-ui": "^2",
+    "echarts": "^6",
+    "svelte": "^5",
+    "svelte-awesome-color-picker": "^4",
+    "svelte-sonner": "^1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7",
+    "@tauri-apps/cli": "^2",
+    "oxfmt": "^0.64",
+    "oxlint": "^1",
+    "svelte-check": "^4",
+    "typescript": "^6",
+    "vite": "^8",
+    "vitest": "^4"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.5.3+sha512.7ac1c919341c213a34dc0d02afb7143c5c26ac26ee8c4782deea821b8ac64d2134a081fd8941dae6e29bbb48f58dfc2b7fbceeccc07cb2f09d219d342a4969ed"
+}

@@ -1,175 +1,271 @@
-name: Release
+name: "正式发布"
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version, for example v0.1.0"
-        required: true
-        type: string
   push:
     tags:
       - "v*"
 
-permissions:
-  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
-env:
-  CARGO_TERM_COLOR: always
-  BIN_NAME: gds3d
+permissions:
+  actions: read
+  contents: write
 
 jobs:
-  build:
-    name: Build and package (${{ matrix.target }})
-    runs-on: ${{ matrix.runner }}
+  validate-tag:
+    name: 校验 Tag 来源并提取版本
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      release_body: ${{ steps.meta.outputs.release_body }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 校验 Tag 指向 main 分支提交
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "当前 tag (${GITHUB_REF_NAME}) 对应提交不在 main 分支上"
+            exit 1
+          fi
+
+      - name: 校验主检查已通过
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const headSha = process.env.GITHUB_SHA;
+            const requiredWorkflowName = '代码质量检查';
+
+            const attempts = 80;
+            const intervalMs = 15_000;
+            for (let attempt = 1; attempt <= attempts; attempt += 1) {
+              const response = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                head_sha: headSha,
+                event: 'push',
+                per_page: 20,
+              });
+              const runs = response.data.workflow_runs.filter((run) =>
+                run.name === requiredWorkflowName &&
+                run.head_sha === headSha &&
+                run.head_branch === 'main'
+              );
+
+              if (runs.some((run) => run.status === 'completed' && run.conclusion === 'success')) {
+                core.info(`提交 ${headSha} 已通过 ${requiredWorkflowName}`);
+                return;
+              }
+
+              const running = runs.some((run) => run.status !== 'completed');
+              if (runs.length > 0 && !running) {
+                const conclusions = runs.map((run) => run.conclusion ?? 'unknown').join(', ');
+                core.setFailed(`${requiredWorkflowName} 未通过，结果：${conclusions}`);
+                return;
+              }
+
+              core.info(
+                `等待 ${requiredWorkflowName}（${attempt}/${attempts}，状态：${running ? '运行中' : '尚未启动'}）`
+              );
+              await new Promise((resolve) => setTimeout(resolve, intervalMs));
+            }
+
+            core.setFailed(`等待 ${requiredWorkflowName} 超时`);
+
+      - name: 提取版本信息
+        id: meta
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "当前 tag 不符合 vX.Y.Z 版本格式: $TAG"
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          RELEASE_BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          PRERELEASE=false
+          if echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-'; then
+            PRERELEASE=true
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "release_name=SeaLantern Connect v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "## 安装" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "| 系统 | 架构 | 下载 |" >> "$GITHUB_OUTPUT"
+          echo "| --- | --- | --- |" >> "$GITHUB_OUTPUT"
+          echo "| Windows | x86_64 | [安装程序（.exe）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_x64-setup.exe) |" >> "$GITHUB_OUTPUT"
+          echo "| Windows | ARM64 | [安装程序（.exe）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_arm64-setup.exe) |" >> "$GITHUB_OUTPUT"
+          echo "| macOS | Intel | [磁盘映像（.dmg）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_x64.dmg) |" >> "$GITHUB_OUTPUT"
+          echo "| macOS | Apple Silicon | [磁盘映像（.dmg）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_aarch64.dmg) |" >> "$GITHUB_OUTPUT"
+          echo "| Linux | x86_64 | [AppImage](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_amd64.AppImage) / [软件包（.deb）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_amd64.deb) / [软件包（.rpm）](${RELEASE_BASE}/SeaLantern.Connect-${VERSION}-1.x86_64.rpm) |" >> "$GITHUB_OUTPUT"
+          echo "| Linux | ARM64 | [AppImage](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_aarch64.AppImage) / [软件包（.deb）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_arm64.deb) / [软件包（.rpm）](${RELEASE_BASE}/SeaLantern.Connect-${VERSION}-1.aarch64.rpm) |" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "### Windows" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "下载对应架构的安装程序，运行后按照安装向导完成安装。大多数 Windows 电脑使用 \`x86_64\`；搭载 ARM 处理器的设备使用 ARM64 版本。" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "### macOS" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "打开 \`.dmg\` 文件后，将 \`SeaLantern Connect.app\` 拖入 \`Applications\` 文件夹。" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "当前发布的应用未进行 Apple 签名和公证。如果 macOS 提示应用已损坏，可在终端执行：" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo '```sh' >> "$GITHUB_OUTPUT"
+          echo 'xattr -dr com.apple.quarantine "/Applications/SeaLantern Connect.app"' >> "$GITHUB_OUTPUT"
+          echo '```' >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "若仍被拦截，可前往“系统设置 → 隐私与安全性”选择“仍要打开”，或右键应用后选择“打开”。" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "### Linux" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "可直接安装对应发行版的 \`.deb\` 或 \`.rpm\` 软件包；使用 AppImage 时，请先为文件添加执行权限。" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: 创建发布草稿
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_NAME: ${{ steps.meta.outputs.release_name }}
+          RELEASE_BODY: ${{ steps.meta.outputs.release_body }}
+          RELEASE_PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const tag = process.env.RELEASE_TAG;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            const existing = releases.find((release) =>
+              release.draft && release.tag_name === tag
+            );
+
+            if (existing) {
+              core.info(`发布草稿 ${tag} 已存在（${existing.id}）`);
+              return;
+            }
+
+            const release = await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tag,
+              target_commitish: context.sha,
+              name: process.env.RELEASE_NAME,
+              body: process.env.RELEASE_BODY,
+              draft: true,
+              prerelease: process.env.RELEASE_PRERELEASE === 'true',
+            });
+            core.info(`已创建发布草稿 ${tag}（${release.data.id}）`);
+
+  publish-tauri:
+    name: 构建 ${{ matrix.label }}
+    needs: validate-tag
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-24.04
-            suffix: linux-amd64
-            platform: linux
-            arch: x64
-          - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-24.04-arm
-            suffix: linux-arm64
-            platform: linux
-            arch: arm64
-          - target: x86_64-apple-darwin
-            runner: macos-15-intel
-            suffix: darwin-amd64
-            platform: macos
-            arch: x64
-          - target: aarch64-apple-darwin
-            runner: macos-15
-            suffix: darwin-arm64
-            platform: macos
-            arch: arm64
-          - target: x86_64-pc-windows-msvc
-            runner: windows-2025
-            suffix: windows-amd64
-            platform: windows
-            arch: x64
-          - target: aarch64-pc-windows-msvc
-            runner: windows-11-arm
-            suffix: windows-arm64
-            platform: windows
-            arch: arm64
-
+          - label: macOS ARM64
+            platform: macos-latest
+            args: "--target aarch64-apple-darwin"
+          - label: macOS x64
+            platform: macos-latest
+            args: "--target x86_64-apple-darwin"
+          - label: Linux x64
+            platform: ubuntu-22.04
+            args: ""
+          - label: Linux ARM64
+            platform: ubuntu-22.04-arm
+            args: ""
+          - label: Windows x64
+            platform: windows-latest
+            args: ""
+          - label: Windows ARM64
+            platform: windows-11-arm
+            args: ""
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
+      - name: 检出代码
+        uses: actions/checkout@v7
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'linux'
+      - name: 安装系统依赖 (Ubuntu 专用)
+        if: startsWith(matrix.platform, 'ubuntu-')
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            rpm \
-            libegl1 \
-            libgl1 \
-            libglib2.0-dev \
-            libwayland-dev \
-            libxkbcommon-dev \
-            libxkbcommon-x11-0 \
-            libxcb-cursor0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-render-util0 \
-            libxcb-xinerama0
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils nasm
 
-      - name: Install Linux packagers
-        if: matrix.platform == 'linux'
-        run: cargo install --locked cargo-deb cargo-generate-rpm
+      - name: 安装 Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
 
-      - name: Install macOS packager
-        if: matrix.platform == 'macos'
-        run: cargo install --locked cargo-bundle
+      - name: 安装 pnpm
+        run: corepack enable
 
-      - name: Install Inno Setup
-        if: matrix.platform == 'windows'
-        run: choco install innosetup -y --no-progress
+      - name: 安装 Rust 工具链 (默认目标)
+        if: matrix.args == ''
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Validate release version
-        if: github.event_name == 'workflow_dispatch'
+      - name: 安装 Rust 工具链 (macOS 目标)
+        if: matrix.args != ''
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: 缓存 Rust 编译产物
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 检查 Svelte 类型
+        run: pnpm check
+
+      - name: 构建并发布
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_BUNDLER_DMG_IGNORE_CI: "true"
+        with:
+          tagName: ${{ needs.validate-tag.outputs.tag }}
+          releaseName: ${{ needs.validate-tag.outputs.release_name }}
+          releaseBody: ${{ needs.validate-tag.outputs.release_body }}
+          releaseDraft: true
+          prerelease: ${{ needs.validate-tag.outputs.prerelease }}
+          args: ${{ format('{0} --config src-tauri/tauri.release.conf.json', matrix.args) }}
+
+      - name: 修正 macOS DMG 布局
+        if: runner.os == 'macOS'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.validate-tag.outputs.tag }}
         shell: bash
         run: |
-          if [[ ! "${{ inputs.version }}" =~ ^v[0-9]+(\.[0-9]+)*([-.][A-Za-z0-9]+)*$ ]]; then
-            echo "Version must look like v0.1.0"
+          set -euo pipefail
+
+          dmg_path="$(find target -type f -path '*/bundle/dmg/*.dmg' -print -quit)"
+          if [[ -z "${dmg_path}" ]]; then
+            echo "未找到 macOS DMG 产物" >&2
             exit 1
           fi
 
-      - name: Package Linux
-        if: matrix.platform == 'linux'
-        shell: bash
-        run: |
-          cargo build --release --locked --target "${{ matrix.target }}"
-          cargo deb --target "${{ matrix.target }}" --no-build
-          cargo generate-rpm --target "${{ matrix.target }}"
-
-          mkdir -p dist/installers
-          deb_path="$(find target -type f -name '*.deb' | head -n 1)"
-          rpm_path="$(find target -type f -name '*.rpm' | head -n 1)"
-          cp "$deb_path" "dist/installers/gds3d-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}-${{ matrix.suffix }}.deb"
-          cp "$rpm_path" "dist/installers/gds3d-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}-${{ matrix.suffix }}.rpm"
-
-      - name: Package macOS
-        if: matrix.platform == 'macos'
-        shell: bash
-        run: |
-          cargo bundle --release --target "${{ matrix.target }}"
-
-          mkdir -p dist/installers
-          app_path="$(find target -type d -name 'gds3d.app' | head -n 1)"
-          ditto -c -k --sequesterRsrc --keepParent "$app_path" \
-            "dist/installers/gds3d-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}-${{ matrix.suffix }}.app.zip"
-
-      - name: Package Windows
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          cargo build --release --locked --target "${{ matrix.target }}"
-          New-Item -ItemType Directory -Force -Path target/release | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/$env:BIN_NAME.exe" "target/release/$env:BIN_NAME.exe" -Force
-          & ".\packaging\windows\package.ps1" `
-            -Version "${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}" `
-            -Arch "${{ matrix.arch }}"
-
-      - name: Upload packages
-        uses: actions/upload-artifact@v5
-        with:
-          name: ${{ matrix.target }}-packages
-          path: dist/installers/*
-          if-no-files-found: error
-
-  publish:
-    name: Publish GitHub release
-    needs: build
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Download packages
-        uses: actions/download-artifact@v5
-        with:
-          path: release-artifacts
-          merge-multiple: true
-
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-          name: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-          files: release-artifacts/*
+          bash scripts/makedmg.sh "${dmg_path}"
+          gh release upload "${RELEASE_TAG}" "${dmg_path}" --clobber

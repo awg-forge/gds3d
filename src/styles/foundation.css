@@ -1,0 +1,145 @@
+:root {
+  --settings-control-width: 200px;
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--background);
+  font-synthesis: none;
+  --background: #f8fafc;
+  --primary: #0ea5e9;
+  --primary-hover: #0369a1;
+  --primary-solid: var(--primary);
+  --primary-solid-hover: var(--primary-hover);
+  --surface: #ffffff;
+  --surface-soft: #f1f5f9;
+  --surface-strong: #e2e8f0;
+  --slider-track: var(--surface-strong);
+  --slider-thumb-border: var(--surface);
+  --overlay-surface: #ffffff;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --muted: #475569;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --shadow: 0 16px 44px rgba(30, 55, 75, 0.11);
+  --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --app-font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --sl-primary: var(--primary);
+  --sl-primary-dark: var(--primary-hover);
+  --sl-primary-bg: color-mix(in srgb, var(--primary) 11%, transparent);
+  --sl-surface: var(--surface);
+  --sl-bg-secondary: var(--surface-soft);
+  --sl-bg-tertiary: var(--surface-strong);
+  --sl-border: var(--border);
+  --sl-border-light: var(--border);
+  --sl-text-primary: var(--text);
+  --sl-text-secondary: var(--muted);
+  --sl-text-tertiary: var(--muted);
+  --sl-text-inverse: #ffffff;
+  --sl-font-sans: var(--app-font-family);
+  --sl-font-display: var(--app-font-family);
+  --sl-font-size-xs: 0.7857rem;
+  --sl-font-size-sm: 0.8571rem;
+  --sl-font-size-base: 0.9286rem;
+  --sl-font-size-lg: 1.0714rem;
+  --sl-radius-xs: 4px;
+  --sl-radius-sm: 6px;
+  --sl-radius-md: 10px;
+  --sl-radius-lg: 16px;
+  --sl-radius-xl: 24px;
+  --sl-radius-full: 9999px;
+  --scrollbar-thumb: var(--border);
+  --scrollbar-thumb-hover: var(--muted);
+  --sl-shadow-focus: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+  --sl-glass-bg: rgba(255, 255, 255, 0.72);
+  --sl-acrylic-bg: rgba(255, 255, 255, 0.65);
+}
+
+:root[data-theme="dark"] {
+  --background: #0c1222;
+  --primary: #38bdf8;
+  --primary-hover: #3b82f6;
+  --surface: #151d2e;
+  --surface-soft: #151d2e;
+  --surface-strong: #1e293b;
+  --overlay-surface: #1e293b;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --sl-glass-bg: rgba(0, 0, 0, 0.72);
+  --sl-acrylic-bg: rgba(0, 0, 0, 0.65);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+*::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button:single-button,
+*::-webkit-scrollbar-button:vertical:start:decrement,
+*::-webkit-scrollbar-button:vertical:end:increment,
+*::-webkit-scrollbar-button:horizontal:start:decrement,
+*::-webkit-scrollbar-button:horizontal:end:increment {
+  width: 0;
+  height: 0;
+  min-width: 0;
+  min-height: 0;
+  display: none !important;
+  border: 0;
+  background: transparent;
+  -webkit-appearance: none;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  border-radius: var(--sl-radius-full);
+  background: transparent;
+}
+*.scrollbar-active::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+*.scrollbar-active::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+body {
+  overflow: hidden;
+  background: inherit;
+  user-select: none;
+}
+button,
+input {
+  font: inherit;
+  letter-spacing: 0;
+}
+strong {
+  font-weight: 600;
+}
+button {
+  color: inherit;
+}

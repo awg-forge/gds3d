@@ -1,65 +1,18 @@
-[package]
-name = "gds3d"
-version = "0.1.4"
-edition = "2024"
-authors = ["AWGForge <sjh855210@qq.com>"]
-description = "A 3D visualization editor for GDS layouts."
-license = "MIT"
-
-[package.metadata.bundle]
-name = "gds3d"
-identifier = "io.github.kercyding.gds3d"
-short_description = "A 3D visualization editor for GDS layouts."
-copyright = "Copyright © 2026 KercyDing"
-category = "public.app-category.graphics-design"
-icon = ["assets/icon.icns", "assets/icon.ico"]
-
-[package.metadata.deb]
-maintainer = "AWGForge <sjh855210@qq.com>"
-depends = "$auto"
-assets = [
-    ["target/release/gds3d", "usr/bin/", "755"],
-    ["assets/icon.png", "usr/share/pixmaps/gds3d.png", "644"],
-    ["gds3d.desktop", "usr/share/applications/", "644"],
-    ["assets/fonts/SOURCE-HAN-SANS-NOTICE.txt", "usr/share/doc/gds3d/", "644"],
-    ["assets/fonts/SOURCE-HAN-SANS-LICENSE.txt", "usr/share/doc/gds3d/", "644"],
-]
-
-[package.metadata.generate-rpm]
-assets = [
-    { source = "target/release/gds3d", dest = "/usr/bin/gds3d", mode = "755" },
-    { source = "assets/icon.png", dest = "/usr/share/pixmaps/gds3d.png", mode = "644" },
-    { source = "gds3d.desktop", dest = "/usr/share/applications/gds3d.desktop", mode = "644" },
-    { source = "assets/fonts/SOURCE-HAN-SANS-NOTICE.txt", dest = "/usr/share/licenses/gds3d/SOURCE-HAN-SANS-NOTICE.txt", mode = "644" },
-    { source = "assets/fonts/SOURCE-HAN-SANS-LICENSE.txt", dest = "/usr/share/licenses/gds3d/SOURCE-HAN-SANS-LICENSE.txt", mode = "644" },
-]
-
 [workspace]
-members = ["src/viewport"]
+members = ["src-tauri"]
 resolver = "3"
 
-[dependencies]
-gds3d-viewport = { path = "src/viewport" }
+[workspace.package]
+version = "1.0.0"
+description = "A lightweight Minecraft Java Edition join client powered by sculk"
+repository = "https://github.com/SeaLantern-Studio/SeaLantern-Connect"
+authors = ["SeaLantern-Studio"]
+edition = "2024"
+license = "Apache-2.0"
 
-anyhow = "1"
-crc32fast = "1.5"
-eframe = { version = "0.36", default-features = false, features = [
-    "accesskit",
-    "default_fonts",
-    "wgpu",
-    "wayland",
-    "x11",
-] }
-gdsii = "0.3"
-flate2 = "1.1"
-indexmap = { version = "2", features = ["serde"] }
-lucide-icons = "1.32"
-printpdf = { version = "0.12", features = ["png"] }
-rfd = "0.17"
-rust-i18n = "4"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-uuid = { version = "1", features = ["v4", "serde"] }
-
-[target.'cfg(windows)'.build-dependencies]
-winresource = "0.1"
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

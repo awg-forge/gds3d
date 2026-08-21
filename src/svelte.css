@@ -1,0 +1,48 @@
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+  .sidebar {
+    width: 68px;
+  }
+  .sidebar-brand {
+    padding: 0 20px !important;
+  }
+  .sidebar-brand-name,
+  .nav-label {
+    display: none;
+  }
+  .nav-item {
+    grid-template-columns: 24px;
+    justify-content: center;
+    padding: 0;
+  }
+  .titlebar-actions {
+    gap: 2px !important;
+  }
+  .theme-switcher {
+    display: none !important;
+  }
+  .workspace {
+    padding: 28px 22px !important;
+  }
+}

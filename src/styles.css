@@ -1,0 +1,40 @@
+@import "./styles/foundation.css";
+@import "./styles/shell.css";
+@import "./styles/preferences.css";
+@import "./styles/workspace.css";
+@import "./styles/frp.css";
+@import "./styles/p2p.css";
+@import "./styles/responsive.css";
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+  animation: theme-old-fade 260ms ease-out both;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+  animation: theme-new-fade 260ms ease-in both;
+}
+
+@keyframes theme-old-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes theme-new-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

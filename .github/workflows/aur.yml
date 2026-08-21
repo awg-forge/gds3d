@@ -1,0 +1,203 @@
+name: "发布 AUR"
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "需要发布到 AUR 的 Tag，例如 v0.1.0"
+        required: true
+        type: string
+
+concurrency:
+  group: aur-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-aur:
+    name: 更新 sealantern-connect
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      AUR_PKGBASE: sealantern-connect
+      BOT_NAME: github-actions[bot]
+      BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+    steps:
+      - name: 校验 Release 及构建产物
+        id: release
+        uses: actions/github-script@v9
+        env:
+          REQUESTED_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const tag = process.env.REQUESTED_TAG;
+            if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(tag)) {
+              core.setFailed(`Tag 格式无效：${tag}`);
+              return;
+            }
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            const release = releases.find((item) => item.tag_name === tag);
+            if (!release) {
+              core.setFailed(`未找到 Tag ${tag} 对应的 Release`);
+              return;
+            }
+            if (release.draft) {
+              core.setFailed(`Release ${tag} 仍是草稿，请先转为正式发布`);
+              return;
+            }
+
+            const amd64 = release.assets.find((asset) => asset.name.endsWith('_amd64.deb'));
+            const arm64 = release.assets.find((asset) => asset.name.endsWith('_arm64.deb'));
+            if (!amd64 || !arm64) {
+              const available = release.assets.map((asset) => asset.name).join(', ') || '无';
+              core.setFailed(`Release 缺少 amd64 或 arm64 的 .deb 产物。现有产物：${available}`);
+              return;
+            }
+
+            const assetUrl = (asset) =>
+              `https://github.com/${owner}/${repo}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(asset.name)}`;
+            core.setOutput('tag', tag);
+            core.setOutput('pkgver', tag.slice(1).replaceAll('-', '_'));
+            core.setOutput('repo', `${owner}/${repo}`);
+            core.setOutput('amd64_asset', amd64.name);
+            core.setOutput('arm64_asset', arm64.name);
+            core.setOutput('amd64_url', assetUrl(amd64));
+            core.setOutput('arm64_url', assetUrl(arm64));
+
+      - name: 下载 Release 产物
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          AMD64_ASSET: ${{ steps.release.outputs.amd64_asset }}
+          ARM64_ASSET: ${{ steps.release.outputs.arm64_asset }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "${AMD64_ASSET}" \
+            --pattern "${ARM64_ASSET}" \
+            --dir dist
+
+      - name: 计算产物校验和
+        id: sums
+        env:
+          AMD64_ASSET: ${{ steps.release.outputs.amd64_asset }}
+          ARM64_ASSET: ${{ steps.release.outputs.arm64_asset }}
+        run: |
+          set -euo pipefail
+          echo "amd64=$(sha256sum "dist/${AMD64_ASSET}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          echo "arm64=$(sha256sum "dist/${ARM64_ASSET}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+
+      - name: 配置 AUR SSH
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${AUR_SSH_PRIVATE_KEY}" ]]; then
+            echo "缺少 AUR_SSH_PRIVATE_KEY"
+            exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: 更新 PKGBUILD 和 .SRCINFO
+        env:
+          PKGVER: ${{ steps.release.outputs.pkgver }}
+          REPOSITORY: ${{ steps.release.outputs.repo }}
+          AMD64_URL: ${{ steps.release.outputs.amd64_url }}
+          ARM64_URL: ${{ steps.release.outputs.arm64_url }}
+          AMD64_SHA: ${{ steps.sums.outputs.amd64 }}
+          ARM64_SHA: ${{ steps.sums.outputs.arm64 }}
+        run: |
+          set -euo pipefail
+          export GIT_SSH_COMMAND='ssh -i ~/.ssh/aur -o IdentitiesOnly=yes'
+
+          git clone "ssh://aur@aur.archlinux.org/${AUR_PKGBASE}.git" aur
+          cd aur
+
+          cat > PKGBUILD <<PKG
+          pkgname=${AUR_PKGBASE}
+          pkgver=${PKGVER}
+          pkgrel=1
+          pkgdesc='Lightweight Minecraft Java Edition P2P multiplayer client powered by sculk'
+          arch=('x86_64' 'aarch64')
+          url='https://github.com/${REPOSITORY}'
+          license=('Apache-2.0')
+          depends=('glibc' 'gcc-libs' 'webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'librsvg')
+          options=('!strip')
+          source_x86_64=('${AUR_PKGBASE}-${PKGVER}-x86_64.deb::${AMD64_URL}')
+          source_aarch64=('${AUR_PKGBASE}-${PKGVER}-aarch64.deb::${ARM64_URL}')
+          sha256sums_x86_64=('${AMD64_SHA}')
+          sha256sums_aarch64=('${ARM64_SHA}')
+
+          package() {
+            local deb
+            case "\${CARCH}" in
+              x86_64) deb='${AUR_PKGBASE}-${PKGVER}-x86_64.deb' ;;
+              aarch64) deb='${AUR_PKGBASE}-${PKGVER}-aarch64.deb' ;;
+              *) return 1 ;;
+            esac
+
+            local unpack_dir="\${srcdir}/deb-data"
+            rm -rf "\${unpack_dir}"
+            mkdir -p "\${unpack_dir}"
+            bsdtar -xf "\${srcdir}/\${deb}" -C "\${unpack_dir}"
+
+            local data_tar
+            data_tar="\$(find "\${unpack_dir}" -maxdepth 1 -type f -name 'data.tar.*' -print -quit)"
+            if [[ -z "\${data_tar}" ]]; then
+              echo "failed to locate data.tar.* in \${deb}" >&2
+              return 1
+            fi
+            bsdtar -xf "\${data_tar}" -C "\${pkgdir}"
+          }
+          PKG
+
+          TAB=$'\t'
+          cat > .SRCINFO <<SRC
+          pkgbase = ${AUR_PKGBASE}
+          ${TAB}pkgdesc = Lightweight Minecraft Java Edition P2P multiplayer client powered by sculk
+          ${TAB}pkgver = ${PKGVER}
+          ${TAB}pkgrel = 1
+          ${TAB}url = https://github.com/${REPOSITORY}
+          ${TAB}arch = x86_64
+          ${TAB}arch = aarch64
+          ${TAB}license = Apache-2.0
+          ${TAB}depends = glibc
+          ${TAB}depends = gcc-libs
+          ${TAB}depends = webkit2gtk-4.1
+          ${TAB}depends = gtk3
+          ${TAB}depends = libayatana-appindicator
+          ${TAB}depends = librsvg
+          ${TAB}options = !strip
+          ${TAB}source_x86_64 = ${AUR_PKGBASE}-${PKGVER}-x86_64.deb::${AMD64_URL}
+          ${TAB}sha256sums_x86_64 = ${AMD64_SHA}
+          ${TAB}source_aarch64 = ${AUR_PKGBASE}-${PKGVER}-aarch64.deb::${ARM64_URL}
+          ${TAB}sha256sums_aarch64 = ${ARM64_SHA}
+
+          pkgname = ${AUR_PKGBASE}
+          SRC
+
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "AUR 无需更新"
+            exit 0
+          fi
+
+          git config user.name "${BOT_NAME}"
+          git config user.email "${BOT_EMAIL}"
+          git commit -m "Update to ${PKGVER}"
+          git push

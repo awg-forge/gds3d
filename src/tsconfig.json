@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "baseUrl": ".",
+    "checkJs": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "6.0",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strict": true,
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "target": "ES2022",
+    "noUnusedLocals": true,
+    "paths": {
+      "@api/*": ["api/*"],
+      "@components/*": ["lib/components/*"],
+      "@domain/*": ["domain/*"],
+      "@i18n": ["i18n/index.ts"],
+      "@models/*": ["models/*"],
+      "@themes": ["themes/index.ts"],
+      "@themes/*": ["themes/*"]
+    }
+  },
+  "exclude": ["vite.config.ts"]
+}

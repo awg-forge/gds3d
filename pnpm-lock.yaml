@@ -38,6 +38,9 @@ importers:
       bits-ui:
         specifier: ^2
         version: 2.18.1(@internationalized/date@3.12.3)(svelte@5.56.8)
+      earcut:
+        specifier: ^3
+        version: 3.2.3
       echarts:
         specifier: ^6
         version: 6.1.0
@@ -704,6 +707,9 @@ packages:
 
   devalue@5.9.0:
     resolution: {integrity: sha512-RWrqdArjvPbsATEhOPUo6Wndc/iWnkWKlhIrdlF3zMMYo/c3CVtoaVAyLtWxz5h8nSlkHzxnzV2uLydPXmtF+A==}
+
+  earcut@3.2.3:
+    resolution: {integrity: sha512-vnS4AVwp1KHAF13i1vp1/2D5evWy3k5u/iW/B81QVsUZtV8cv2tU0b2VNFlqvh4kYwrFMDdjPCfAmfyJW9y14Q==}
 
   echarts@6.1.0:
     resolution: {integrity: sha512-q0yaFPggC9FUdsWH4blavRWFmxdrIodbkoKNAjJudAI6CA9gNPxHtV2RcZNEepZVlk4yvBYkOkbk6HIVpIyHZA==}
@@ -1532,6 +1538,8 @@ snapshots:
   detect-libc@2.1.2: {}
 
   devalue@5.9.0: {}
+
+  earcut@3.2.3: {}
 
   echarts@6.1.0:
     dependencies:

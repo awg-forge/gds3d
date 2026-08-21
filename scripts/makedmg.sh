@@ -65,10 +65,6 @@ if [[ "${#app_paths[@]}" -ne 1 ]]; then
     echo "expected exactly one app bundle in ${mount_point}" >&2
     exit 1
 fi
-if [[ ! -f "${mount_point}/.background/dmg-background.png" ]]; then
-    echo "DMG background not found" >&2
-    exit 1
-fi
 if [[ ! -L "${mount_point}/Applications" ]]; then
     echo "Applications link not found" >&2
     exit 1
@@ -99,10 +95,8 @@ on run argv
                 set arrangement to not arranged
             end tell
 
-            set background picture of opts to file ".background:dmg-background.png"
             set position of item appName to {180, 198}
             set position of item "Applications" to {480, 198}
-            set position of item ".background" to {770, 100}
             set position of item ".VolumeIcon.icns" to {770, 100}
             set extension hidden of item appName to true
 

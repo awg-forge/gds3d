@@ -1,18 +1,18 @@
-# 执行 `only` 来查看所有命令
-# 详情请见：https://github.com/KercyDing/only
-# 安装：`cargo install only`
-# VSCode 插件：kercyding.onlyfile
+# Run `only` to list all tasks
+# Documentation: https://github.com/KercyDing/only
+# Install: `cargo install only`
+# VS Code extension: kercyding.onlyfile
 
 !version 0.4
 
-[help] 启动开发模式
+[help] Start development mode
 dev(level = "info") ? @os("windows") shell~=pwsh:
     $env:GDS3D_LOG = "{{level}}"; pnpm tauri dev
 
 dev(level = "info"):
     GDS3D_LOG={{level}} pnpm tauri dev
 
-[help] 构建应用
+[help] Build the application
 build() ? @os("macos"):
     pnpm tauri build
     bash scripts/makedmg.sh
@@ -20,120 +20,119 @@ build() ? @os("macos"):
 build():
     pnpm tauri build
 
-[help] 运行全量 CI
-[desc] 并行执行前后端 CI。
-[pass] 本地 CI 成功！🎉
+[help] Run the full CI suite
+[desc] Run frontend and backend CI in parallel.
+[pass] Local CI passed.
 ci() & (front.ci, back.ci)
 
-[help] 执行全量检查
-[pass] 格式化和检查完成！
+[help] Run all checks
+[pass] Formatting and checks passed.
 check() & (front.check, back.check)
 
-[help] 执行全量测试
-[pass] 测试成功！
+[help] Run all tests
+[pass] Tests passed.
 test() & (front.test, back.test)
 
-[help] 清理全部构建产物
-[pass] 构建产物已全部清除！
+[help] Clean all build artifacts
+[pass] Build artifacts cleaned.
 clean() & (front.clean, back.clean)
 
-[help] 环境检测
-[pass] 环境检测成功！
+[help] Check the development environment
+[pass] Development environment ready.
 _prepare() & (front._prepare, back._prepare)
 
-# =============== 前端 ===============
-[help] 前端任务
+# =============== Frontend ===============
+[help] Frontend tasks
 group front {
 
-    [help] 准备前端环境
+    [help] Prepare the frontend environment
     _prepare() ? @has("pnpm"):
         pnpm install
 
-    [fail] 你的 pnpm 呢？
+    [fail] pnpm is required.
     _prepare():
         exit 1
 
-    [help] 格式化并检查前端
-    [pass] 前端检查完成！
-    [fail] 前端检查失败！
+    [help] Format and check the frontend
+    [pass] Frontend checks passed.
+    [fail] Frontend checks failed.
     check() & _prepare:
         pnpm fmt
         pnpm lint
 
-    [help] 运行前端集成测试
-    [pass] 前端测试成功！
-    [fail] 前端测试失败！
+    [help] Run frontend tests
+    [pass] Frontend tests passed.
+    [fail] Frontend tests failed.
     test() & _prepare:
         pnpm test
 
-    [help] 执行前端 CI
-    [pass] 前端 CI 成功！
+    [help] Run frontend CI
+    [pass] Frontend CI passed.
     ci() & (check, test)
 
-    [help] 清理前端构建产物
-    [pass] 前端已清除！
-    [fail] 前端清理失败！
+    [help] Clean frontend build artifacts
+    [pass] Frontend artifacts cleaned.
+    [fail] Failed to clean frontend artifacts.
     clean():
         rm -rf node_modules dist
 }
 
-# =============== 后端 ===============
-[help] 后端任务
+# =============== Backend ===============
+[help] Backend tasks
 group back {
 
-    [help] 准备后端环境
-    [pass] 后端环境检查通过！
+    [help] Prepare the backend environment
+    [pass] Backend environment ready.
     _prepare() ? @has("cargo")
 
-    [fail] 你的 cargo 呢？
+    [fail] cargo is required.
     _prepare():
         exit 1
 
-    [help] 格式化并检查后端
-    [pass] 后端检查完成！
-    [fail] 后端检查失败！
+    [help] Format and check the backend
+    [pass] Backend checks passed.
+    [fail] Backend checks failed.
     check() & _prepare:
         cargo fmt --all
         cargo check --workspace --all-targets
         cargo clippy --workspace --all-targets -- -D warnings
 
-    [help] 运行后端测试
-    [pass] 后端测试成功！
-    [fail] 后端测试失败！
+    [help] Run backend tests
+    [pass] Backend tests passed.
+    [fail] Backend tests failed.
     test() ? @has("cargo-nextest") & _prepare:
         cargo nextest run --no-fail-fast
 
     test() & _prepare:
         cargo test --all-targets --workspace
 
-    [help] 执行后端 CI
-    [pass] 后端 CI 成功！
+    [help] Run backend CI
+    [pass] Backend CI passed.
     ci() & check & test
 
-    [help] 清理后端构建产物
-    [pass] 后端已清除！
-    [fail] 后端清理失败！
+    [help] Clean backend build artifacts
+    [pass] Backend artifacts cleaned.
+    [fail] Failed to clean backend artifacts.
     clean():
         cargo clean
 }
 
-# =============== 版本相关 ===============
-[help] 版本相关命令
+# =============== Versioning ===============
+[help] Versioning tasks
 group version {
 
-    [help] 查看项目版本号
+    [help] Show the project version
     show():
         pnpm sv
 
-    [help] 发布新版本
-    [desc] 仅 Repo Admin 有权限
-    [pass] 成功发布！
-    [fail] 版本号不对哦~
+    [help] Publish a new version
+    [desc] Only administrators can run this task.
+    [pass] Release published.
+    [fail] Invalid version.
     publish(version):
         pnpm cv {{version}}
-        pnpm notice
         only ci
-        git commit -am "chore: 升级到 {{version}}"
+        git commit -am "chore: update to {{version}}"
         git tag {{version}}
         git push --atomic origin HEAD {{version}}
 }

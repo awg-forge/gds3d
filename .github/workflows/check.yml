@@ -109,8 +109,5 @@ jobs:
       - name: 运行前端测试
         run: pnpm test
 
-      - name: 检查 Svelte 类型
-        run: pnpm check
-
       - name: 构建前端
         run: pnpm build

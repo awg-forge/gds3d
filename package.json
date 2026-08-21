@@ -10,7 +10,6 @@
     "build": "vite build -c src/vite.config.ts",
     "preview": "vite preview",
     "test": "svelte-check --workspace . --tsconfig src/tsconfig.json",
-    "notice": "node scripts/notice.ts",
     "sv": "node scripts/version.ts show",
     "cv": "node scripts/version.ts change",
     "tauri": "tauri",

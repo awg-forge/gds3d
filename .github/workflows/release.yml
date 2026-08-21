@@ -101,18 +101,18 @@ jobs:
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
-          echo "release_name=SeaLantern Connect v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_name=gds3d v${VERSION}" >> "$GITHUB_OUTPUT"
           echo "release_body<<EOF" >> "$GITHUB_OUTPUT"
           echo "## 安装" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "| 系统 | 架构 | 下载 |" >> "$GITHUB_OUTPUT"
           echo "| --- | --- | --- |" >> "$GITHUB_OUTPUT"
-          echo "| Windows | x86_64 | [安装程序（.exe）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_x64-setup.exe) |" >> "$GITHUB_OUTPUT"
-          echo "| Windows | ARM64 | [安装程序（.exe）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_arm64-setup.exe) |" >> "$GITHUB_OUTPUT"
-          echo "| macOS | Intel | [磁盘映像（.dmg）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_x64.dmg) |" >> "$GITHUB_OUTPUT"
-          echo "| macOS | Apple Silicon | [磁盘映像（.dmg）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_aarch64.dmg) |" >> "$GITHUB_OUTPUT"
-          echo "| Linux | x86_64 | [AppImage](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_amd64.AppImage) / [软件包（.deb）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_amd64.deb) / [软件包（.rpm）](${RELEASE_BASE}/SeaLantern.Connect-${VERSION}-1.x86_64.rpm) |" >> "$GITHUB_OUTPUT"
-          echo "| Linux | ARM64 | [AppImage](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_aarch64.AppImage) / [软件包（.deb）](${RELEASE_BASE}/SeaLantern.Connect_${VERSION}_arm64.deb) / [软件包（.rpm）](${RELEASE_BASE}/SeaLantern.Connect-${VERSION}-1.aarch64.rpm) |" >> "$GITHUB_OUTPUT"
+          echo "| Windows | x86_64 | [安装程序（.exe）](${RELEASE_BASE}/gds3d_${VERSION}_x64-setup.exe) |" >> "$GITHUB_OUTPUT"
+          echo "| Windows | ARM64 | [安装程序（.exe）](${RELEASE_BASE}/gds3d_${VERSION}_arm64-setup.exe) |" >> "$GITHUB_OUTPUT"
+          echo "| macOS | Intel | [磁盘映像（.dmg）](${RELEASE_BASE}/gds3d_${VERSION}_x64.dmg) |" >> "$GITHUB_OUTPUT"
+          echo "| macOS | Apple Silicon | [磁盘映像（.dmg）](${RELEASE_BASE}/gds3d_${VERSION}_aarch64.dmg) |" >> "$GITHUB_OUTPUT"
+          echo "| Linux | x86_64 | [软件包（.deb）](${RELEASE_BASE}/gds3d_${VERSION}_amd64.deb) / [软件包（.rpm）](${RELEASE_BASE}/gds3d-${VERSION}-1.x86_64.rpm) |" >> "$GITHUB_OUTPUT"
+          echo "| Linux | ARM64 | [软件包（.deb）](${RELEASE_BASE}/gds3d_${VERSION}_arm64.deb) / [软件包（.rpm）](${RELEASE_BASE}/gds3d-${VERSION}-1.aarch64.rpm) |" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "### Windows" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
@@ -120,19 +120,19 @@ jobs:
           echo "" >> "$GITHUB_OUTPUT"
           echo "### macOS" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "打开 \`.dmg\` 文件后，将 \`SeaLantern Connect.app\` 拖入 \`Applications\` 文件夹。" >> "$GITHUB_OUTPUT"
+          echo "打开 \`.dmg\` 文件后，将 \`gds3d.app\` 拖入 \`Applications\` 文件夹。" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "当前发布的应用未进行 Apple 签名和公证。如果 macOS 提示应用已损坏，可在终端执行：" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo '```sh' >> "$GITHUB_OUTPUT"
-          echo 'xattr -dr com.apple.quarantine "/Applications/SeaLantern Connect.app"' >> "$GITHUB_OUTPUT"
+          echo 'xattr -dr com.apple.quarantine "/Applications/gds3d.app"' >> "$GITHUB_OUTPUT"
           echo '```' >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "若仍被拦截，可前往“系统设置 → 隐私与安全性”选择“仍要打开”，或右键应用后选择“打开”。" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "### Linux" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "可直接安装对应发行版的 \`.deb\` 或 \`.rpm\` 软件包；使用 AppImage 时，请先为文件添加执行权限。" >> "$GITHUB_OUTPUT"
+          echo "可直接安装对应发行版的 \`.deb\` 或 \`.rpm\` 软件包。" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: 创建发布草稿
@@ -235,8 +235,8 @@ jobs:
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 检查 Svelte 类型
-        run: pnpm check
+      - name: 运行前端检查
+        run: pnpm test
 
       - name: 构建并发布
         uses: tauri-apps/tauri-action@v1
@@ -250,7 +250,7 @@ jobs:
           releaseBody: ${{ needs.validate-tag.outputs.release_body }}
           releaseDraft: true
           prerelease: ${{ needs.validate-tag.outputs.prerelease }}
-          args: ${{ format('{0} --config src-tauri/tauri.release.conf.json', matrix.args) }}
+          args: ${{ matrix.args }}
 
       - name: 修正 macOS DMG 布局
         if: runner.os == 'macOS'

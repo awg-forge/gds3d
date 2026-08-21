@@ -31,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "rpm", "nsis", "dmg"],
     "copyright": "Copyright © 2026 AWGForge"
   },
   "plugins": {}

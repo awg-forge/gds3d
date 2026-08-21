@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { open, save } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
-  import { getSceneSnapshot, importGds, inspectGdsFile, type GdsFileInfo, type SceneSnapshot } from "@api/gds";
+  import { getSceneSnapshot, importGds, inspectGdsFile, saveProject, updateObjectDisplay, type GdsFileInfo, type SceneSnapshot } from "@api/gds";
   import Viewport from "./lib/Viewport.svelte";
 
   let fileInfo = $state<GdsFileInfo | null>(null);
@@ -28,19 +28,32 @@
 
   let selected = $derived(selectedObject());
 
+  async function saveCurrentProject() {
+    if (!scene) return;
+    const path = await save({ defaultPath: "gds3d-project.gds3d", filters: [{ name: "gds3d project", extensions: ["gds3d"] }] });
+    if (!path) return;
+    try { await saveProject(path); } catch (reason) { error = reason instanceof Error ? reason.message : String(reason); }
+  }
+
+  async function updateSelected(update: { color?: string; brightness?: number }) {
+    if (!selectedId) return;
+    try { scene = await updateObjectDisplay({ objectId: selectedId, ...update }); }
+    catch (reason) { error = reason instanceof Error ? reason.message : String(reason); }
+  }
+
   function resetCamera() { window.dispatchEvent(new CustomEvent("gds3d-reset-camera")); }
 </script>
 
 <svelte:head><title>gds3d</title></svelte:head>
 
 <main class="app-shell">
-  <header class="toolbar"><div class="brand">gds3d</div><button onclick={chooseGds} disabled={busy}>{busy ? "Loading…" : "Open GDS"}</button><button class="secondary" onclick={resetCamera}>Reset camera</button>{#if selectedPath}<span class="path">{selectedPath}</span>{/if}</header>
+  <header class="toolbar"><div class="brand">gds3d</div><button onclick={chooseGds} disabled={busy}>{busy ? "Loading…" : "Open GDS"}</button><button class="secondary" onclick={saveCurrentProject} disabled={!scene}>Save project</button><button class="secondary" onclick={resetCamera}>Reset camera</button>{#if selectedPath}<span class="path">{selectedPath}</span>{/if}</header>
   <section class="workspace">
     <aside class="sidebar"><h2>Layers</h2>
       {#if fileInfo}{#each fileInfo.cells as cell}<h3>{cell.name}</h3>{#each cell.layers as layer}<div class="layer-row"><span>L{layer.selection.layer}/D{layer.selection.datatype}</span><small>{layer.polygon_count} polygons</small></div>{/each}{/each}{:else}<p class="muted">Open a GDS file to inspect its layers.</p>{/if}
     </aside>
     <section class="viewport">{#if scene}<Viewport objects={scene.objects} onSelect={(id) => (selectedId = id)} />{:else}<div class="viewport-placeholder"><div class="cube">◇</div><strong>Babylon viewport</strong><span>Waiting for a GDS scene</span></div>{/if}</section>
-    <aside class="properties"><h2>Properties</h2>{#if selected}<p class="selected-name">{selected.payload?.display?.name ?? selected.payload?.id}</p><label>Color<input type="color" value={selected.payload?.display?.color ?? "#4c89c8"} /></label><label>Brightness<input type="range" min="0.1" max="2" step="0.05" value={selected.payload?.display?.brightness ?? 1} /></label><p>Z: {selected.payload?.display?.z_min} → {selected.payload?.display?.z_max}</p>{:else if scene}<p>{scene.objects.length} objects</p><p class="muted">Click a layer in the viewport to inspect it.</p>{:else}<p class="muted">Nothing selected</p>{/if}</aside>
+    <aside class="properties"><h2>Properties</h2>{#if selected}<p class="selected-name">{selected.payload?.display?.name ?? selected.payload?.id}</p><label>Color<input type="color" value={selected.payload?.display?.color ?? "#4c89c8"} onchange={(event) => updateSelected({ color: (event.currentTarget as HTMLInputElement).value })} /></label><label>Brightness<input type="range" min="0.1" max="2" step="0.05" value={selected.payload?.display?.brightness ?? 1} oninput={(event) => updateSelected({ brightness: Number((event.currentTarget as HTMLInputElement).value) })} /></label><p>Z: {selected.payload?.display?.z_min} → {selected.payload?.display?.z_max}</p>{:else if scene}<p>{scene.objects.length} objects</p><p class="muted">Click a layer in the viewport to inspect it.</p>{:else}<p class="muted">Nothing selected</p>{/if}</aside>
   </section>
   {#if error}<div class="error">{error}</div>{/if}
 </main>

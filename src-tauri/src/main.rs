@@ -31,6 +31,17 @@ struct SceneSnapshot {
     objects: Vec<model::SceneObject>,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DisplayUpdate {
+    object_id: String,
+    color: Option<String>,
+    brightness: Option<f32>,
+    visible: Option<bool>,
+    z_min: Option<f32>,
+    z_max: Option<f32>,
+}
+
 fn snapshot(scene: &model::Scene) -> SceneSnapshot {
     SceneSnapshot {
         revision: scene.revision(),
@@ -58,6 +69,27 @@ fn import_gds(path: String, state: tauri::State<'_, SceneState>) -> Result<Scene
 fn scene_snapshot(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, String> {
     let scene = state.0.lock().map_err(|_| "scene state is unavailable".to_owned())?;
     Ok(snapshot(&scene))
+}
+
+#[tauri::command]
+fn update_object_display(update: DisplayUpdate, state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, String> {
+    let mut scene = state.0.lock().map_err(|_| "scene state is unavailable".to_owned())?;
+    let object = scene.get_mut(&update.object_id).ok_or_else(|| "scene object not found".to_owned())?;
+    let display = object.display_mut();
+    if let Some(color) = update.color { display.color = color; }
+    if let Some(brightness) = update.brightness { display.brightness = brightness.clamp(0.05, 2.0); }
+    if let Some(visible) = update.visible { display.visible = visible; }
+    if let Some(z_min) = update.z_min { display.z_min = z_min; }
+    if let Some(z_max) = update.z_max { display.z_max = z_max; }
+    scene.touch();
+    Ok(snapshot(&scene))
+}
+
+#[tauri::command]
+fn save_project(path: String, state: tauri::State<'_, SceneState>) -> Result<(), String> {
+    let scene = state.0.lock().map_err(|_| "scene state is unavailable".to_owned())?;
+    let objects = scene.objects().cloned().collect::<Vec<_>>();
+    archive::write_archive(Path::new(&path), &objects).map_err(|error| error.to_string())
 }
 
 #[cfg(all(target_os = "windows", debug_assertions))]
@@ -182,6 +214,8 @@ fn main() {
             inspect_gds_file,
             import_gds,
             scene_snapshot,
+            update_object_display,
+            save_project,
             p2p::get_p2p_status,
             stop_tunnel,
             restart_application,

@@ -1,9 +1,20 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { getAppVersion } from "@api/app";
   import { t } from "@i18n";
   import logo from "../../assets/logo.png";
   import Dialog from "./ui/Dialog.svelte";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
+  let version = $state("--");
+
+  onMount(async () => {
+    try {
+      version = await getAppVersion();
+    } catch {
+      // The browser preview has no Tauri runtime.
+    }
+  });
 </script>
 
 <Dialog bind:open title={t("gds.about")} closeLabel={t("gds.closeDialog")} width="560px">
@@ -12,7 +23,7 @@
     <div class="about-copy">
       <h2>gds3d</h2>
       <p>{t("gds.aboutDescription")}</p>
-      <small>{t("gds.version", { version: "0.1.4" })}</small>
+      <small>{t("gds.version", { version })}</small>
     </div>
   </div>
 </Dialog>

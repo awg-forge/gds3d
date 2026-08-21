@@ -1,4 +1,4 @@
-name: "代码质量检查"
+name: "Code Quality"
 
 on:
   pull_request:
@@ -16,16 +16,16 @@ permissions:
 
 jobs:
   changes:
-    name: 检测变更范围
+    name: Detect changes
     runs-on: ubuntu-22.04
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
-      - name: 检出代码
+      - name: Checkout
         uses: actions/checkout@v7
 
-      - name: 检测变更文件
+      - name: Detect changed files
         id: filter
         uses: dorny/paths-filter@v3
         with:
@@ -46,68 +46,68 @@ jobs:
               - '.github/workflows/check.yml'
 
   backend:
-    name: 后端检查 (Rust)
+    name: Backend checks (Rust)
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - name: 检出代码
+      - name: Checkout
         uses: actions/checkout@v7
 
-      - name: 安装系统依赖
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf nasm
 
-      - name: 安装 Rust 工具链
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: 缓存 Rust 编译产物
+      - name: Cache Rust build artifacts
         uses: swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
 
-      - name: 检查代码格式
+      - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: 运行 Clippy 检查
+      - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: 运行测试
+      - name: Run tests
         run: cargo test --all-targets --workspace
 
   frontend:
-    name: 前端检查 (Node)
+    name: Frontend checks (Node)
     needs: changes
     if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - name: 检出代码
+      - name: Checkout
         uses: actions/checkout@v7
 
-      - name: 安装 Node.js
+      - name: Install Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "24"
 
-      - name: 安装 pnpm
+      - name: Install pnpm
         run: corepack enable
 
-      - name: 安装前端依赖
+      - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: 检查前端格式
+      - name: Check frontend formatting
         run: pnpm fmt:check
 
-      - name: 运行前端 Lint
+      - name: Run frontend lint
         run: pnpm lint
 
-      - name: 运行前端测试
+      - name: Run frontend tests
         run: pnpm test
 
-      - name: 构建前端
+      - name: Build frontend
         run: pnpm build

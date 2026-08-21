@@ -93,8 +93,8 @@ fn window_state_flags() -> StateFlags {
 }
 
 fn setup_tray(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    let show = MenuItem::with_id(app, TRAY_SHOW_ID, "显示 gds3d", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "退出", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, TRAY_SHOW_ID, "Show gds3d", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
     let icon = app
         .default_window_icon()

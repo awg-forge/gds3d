@@ -1,4 +1,4 @@
-name: "正式发布"
+name: "Release"
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   validate-tag:
-    name: 校验 Tag 来源并提取版本
+    name: Validate tag and extract version
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     outputs:
@@ -24,27 +24,27 @@ jobs:
       release_name: ${{ steps.meta.outputs.release_name }}
       release_body: ${{ steps.meta.outputs.release_body }}
     steps:
-      - name: 检出代码
+      - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: 校验 Tag 指向 main 分支提交
+      - name: Validate tag points to main
         run: |
           set -euo pipefail
           git fetch origin main --no-tags
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "当前 tag (${GITHUB_REF_NAME}) 对应提交不在 main 分支上"
+            echo "Tag ${GITHUB_REF_NAME} does not point to a commit on main"
             exit 1
           fi
 
-      - name: 校验主检查已通过
+      - name: Verify required checks
         uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;
             const headSha = process.env.GITHUB_SHA;
-            const requiredWorkflowName = '代码质量检查';
+            const requiredWorkflowName = 'Code Quality';
 
             const attempts = 80;
             const intervalMs = 15_000;
@@ -63,32 +63,32 @@ jobs:
               );
 
               if (runs.some((run) => run.status === 'completed' && run.conclusion === 'success')) {
-                core.info(`提交 ${headSha} 已通过 ${requiredWorkflowName}`);
+                core.info(`Commit ${headSha} passed ${requiredWorkflowName}`);
                 return;
               }
 
               const running = runs.some((run) => run.status !== 'completed');
               if (runs.length > 0 && !running) {
                 const conclusions = runs.map((run) => run.conclusion ?? 'unknown').join(', ');
-                core.setFailed(`${requiredWorkflowName} 未通过，结果：${conclusions}`);
+                core.setFailed(`${requiredWorkflowName} failed: ${conclusions}`);
                 return;
               }
 
               core.info(
-                `等待 ${requiredWorkflowName}（${attempt}/${attempts}，状态：${running ? '运行中' : '尚未启动'}）`
+                `Waiting for ${requiredWorkflowName} (${attempt}/${attempts}, status: ${running ? 'running' : 'not started'})`
               );
               await new Promise((resolve) => setTimeout(resolve, intervalMs));
             }
 
-            core.setFailed(`等待 ${requiredWorkflowName} 超时`);
+            core.setFailed(`Timed out waiting for ${requiredWorkflowName}`);
 
-      - name: 提取版本信息
+      - name: Extract version metadata
         id: meta
         run: |
           set -euo pipefail
           TAG="$GITHUB_REF_NAME"
           if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
-            echo "当前 tag 不符合 vX.Y.Z 版本格式: $TAG"
+            echo "Tag does not match the vX.Y.Z format: $TAG"
             exit 1
           fi
 
@@ -103,39 +103,39 @@ jobs:
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "release_name=gds3d v${VERSION}" >> "$GITHUB_OUTPUT"
           echo "release_body<<EOF" >> "$GITHUB_OUTPUT"
-          echo "## 安装" >> "$GITHUB_OUTPUT"
+          echo "## Installation" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "| 系统 | 架构 | 下载 |" >> "$GITHUB_OUTPUT"
+          echo "| Platform | Architecture | Download |" >> "$GITHUB_OUTPUT"
           echo "| --- | --- | --- |" >> "$GITHUB_OUTPUT"
-          echo "| Windows | x86_64 | [安装程序（.exe）](${RELEASE_BASE}/gds3d_${VERSION}_x64-setup.exe) |" >> "$GITHUB_OUTPUT"
-          echo "| Windows | ARM64 | [安装程序（.exe）](${RELEASE_BASE}/gds3d_${VERSION}_arm64-setup.exe) |" >> "$GITHUB_OUTPUT"
-          echo "| macOS | Intel | [磁盘映像（.dmg）](${RELEASE_BASE}/gds3d_${VERSION}_x64.dmg) |" >> "$GITHUB_OUTPUT"
-          echo "| macOS | Apple Silicon | [磁盘映像（.dmg）](${RELEASE_BASE}/gds3d_${VERSION}_aarch64.dmg) |" >> "$GITHUB_OUTPUT"
-          echo "| Linux | x86_64 | [软件包（.deb）](${RELEASE_BASE}/gds3d_${VERSION}_amd64.deb) / [软件包（.rpm）](${RELEASE_BASE}/gds3d-${VERSION}-1.x86_64.rpm) |" >> "$GITHUB_OUTPUT"
-          echo "| Linux | ARM64 | [软件包（.deb）](${RELEASE_BASE}/gds3d_${VERSION}_arm64.deb) / [软件包（.rpm）](${RELEASE_BASE}/gds3d-${VERSION}-1.aarch64.rpm) |" >> "$GITHUB_OUTPUT"
+          echo "| Windows | x86_64 | [Installer (.exe)](${RELEASE_BASE}/gds3d_${VERSION}_x64-setup.exe) |" >> "$GITHUB_OUTPUT"
+          echo "| Windows | ARM64 | [Installer (.exe)](${RELEASE_BASE}/gds3d_${VERSION}_arm64-setup.exe) |" >> "$GITHUB_OUTPUT"
+          echo "| macOS | Intel | [Disk image (.dmg)](${RELEASE_BASE}/gds3d_${VERSION}_x64.dmg) |" >> "$GITHUB_OUTPUT"
+          echo "| macOS | Apple Silicon | [Disk image (.dmg)](${RELEASE_BASE}/gds3d_${VERSION}_aarch64.dmg) |" >> "$GITHUB_OUTPUT"
+          echo "| Linux | x86_64 | [Package (.deb)](${RELEASE_BASE}/gds3d_${VERSION}_amd64.deb) / [Package (.rpm)](${RELEASE_BASE}/gds3d-${VERSION}-1.x86_64.rpm) |" >> "$GITHUB_OUTPUT"
+          echo "| Linux | ARM64 | [Package (.deb)](${RELEASE_BASE}/gds3d_${VERSION}_arm64.deb) / [Package (.rpm)](${RELEASE_BASE}/gds3d-${VERSION}-1.aarch64.rpm) |" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "### Windows" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "下载对应架构的安装程序，运行后按照安装向导完成安装。大多数 Windows 电脑使用 \`x86_64\`；搭载 ARM 处理器的设备使用 ARM64 版本。" >> "$GITHUB_OUTPUT"
+          echo "Download the installer for your architecture and follow the installation wizard. Most Windows PCs use \`x86_64\`; ARM-based devices use ARM64." >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "### macOS" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "打开 \`.dmg\` 文件后，将 \`gds3d.app\` 拖入 \`Applications\` 文件夹。" >> "$GITHUB_OUTPUT"
+          echo "Open the \`.dmg\` file and drag \`gds3d.app\` to the \`Applications\` folder." >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "当前发布的应用未进行 Apple 签名和公证。如果 macOS 提示应用已损坏，可在终端执行：" >> "$GITHUB_OUTPUT"
+          echo "This release is not signed or notarized by Apple. If macOS reports that the app is damaged, run:" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo '```sh' >> "$GITHUB_OUTPUT"
           echo 'xattr -dr com.apple.quarantine "/Applications/gds3d.app"' >> "$GITHUB_OUTPUT"
           echo '```' >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "若仍被拦截，可前往“系统设置 → 隐私与安全性”选择“仍要打开”，或右键应用后选择“打开”。" >> "$GITHUB_OUTPUT"
+          echo "If it is still blocked, open System Settings > Privacy & Security and choose Open Anyway, or right-click the app and choose Open." >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
           echo "### Linux" >> "$GITHUB_OUTPUT"
           echo "" >> "$GITHUB_OUTPUT"
-          echo "可直接安装对应发行版的 \`.deb\` 或 \`.rpm\` 软件包。" >> "$GITHUB_OUTPUT"
+          echo "Install the \`.deb\` or \`.rpm\` package for your distribution." >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: 创建发布草稿
+      - name: Create release draft
         uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
@@ -156,7 +156,7 @@ jobs:
             );
 
             if (existing) {
-              core.info(`发布草稿 ${tag} 已存在（${existing.id}）`);
+              core.info(`Release draft ${tag} already exists (${existing.id})`);
               return;
             }
 
@@ -170,10 +170,10 @@ jobs:
               draft: true,
               prerelease: process.env.RELEASE_PRERELEASE === 'true',
             });
-            core.info(`已创建发布草稿 ${tag}（${release.data.id}）`);
+            core.info(`Created release draft ${tag} (${release.data.id})`);
 
   publish-tauri:
-    name: 构建 ${{ matrix.label }}
+    name: Build ${{ matrix.label }}
     needs: validate-tag
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 90
@@ -200,45 +200,45 @@ jobs:
             platform: windows-11-arm
             args: ""
     steps:
-      - name: 检出代码
+      - name: Checkout
         uses: actions/checkout@v7
 
-      - name: 安装系统依赖 (Ubuntu 专用)
+      - name: Install system dependencies (Ubuntu only)
         if: startsWith(matrix.platform, 'ubuntu-')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils nasm
 
-      - name: 安装 Node.js
+      - name: Install Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "24"
 
-      - name: 安装 pnpm
+      - name: Install pnpm
         run: corepack enable
 
-      - name: 安装 Rust 工具链 (默认目标)
+      - name: Install Rust toolchain (default target)
         if: matrix.args == ''
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 安装 Rust 工具链 (macOS 目标)
+      - name: Install Rust toolchain (macOS targets)
         if: matrix.args != ''
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: 缓存 Rust 编译产物
+      - name: Cache Rust build artifacts
         uses: swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
 
-      - name: 安装前端依赖
+      - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: 运行前端检查
+      - name: Run frontend checks
         run: pnpm test
 
-      - name: 构建并发布
+      - name: Build and publish
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -251,7 +251,7 @@ jobs:
           prerelease: ${{ needs.validate-tag.outputs.prerelease }}
           args: ${{ matrix.args }}
 
-      - name: 修正 macOS DMG 布局
+      - name: Fix macOS DMG layout
         if: runner.os == 'macOS'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -262,7 +262,7 @@ jobs:
 
           dmg_path="$(find target -type f -path '*/bundle/dmg/*.dmg' -print -quit)"
           if [[ -z "${dmg_path}" ]]; then
-            echo "未找到 macOS DMG 产物" >&2
+            echo "macOS DMG artifact not found" >&2
             exit 1
           fi
 

@@ -14,10 +14,51 @@ mod toolbox;
 
 use desktop::{autodelay, deeplink, effects, theme, tray, window_state};
 use p2p::{host, join};
+use serde::Serialize;
+use std::path::Path;
+use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 const AUTOSTART_ARGUMENT: &str = "--autostart";
+
+#[derive(Default)]
+struct SceneState(Mutex<model::Scene>);
+
+#[derive(Serialize)]
+struct SceneSnapshot {
+    revision: u64,
+    objects: Vec<model::SceneObject>,
+}
+
+fn snapshot(scene: &model::Scene) -> SceneSnapshot {
+    SceneSnapshot {
+        revision: scene.revision(),
+        objects: scene.objects().cloned().collect(),
+    }
+}
+
+#[tauri::command]
+fn inspect_gds_file(path: String) -> Result<model::GdsFileInfo, String> {
+    model::inspect_gds_file(Path::new(&path)).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn import_gds(path: String, state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, String> {
+    let objects = model::import_gds_layers(Path::new(&path)).map_err(|error| error.to_string())?;
+    let mut scene = state.0.lock().map_err(|_| "scene state is unavailable".to_owned())?;
+    *scene = model::Scene::default();
+    for object in objects {
+        scene.add(object).map_err(|error| error.to_string())?;
+    }
+    Ok(snapshot(&scene))
+}
+
+#[tauri::command]
+fn scene_snapshot(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, String> {
+    let scene = state.0.lock().map_err(|_| "scene state is unavailable".to_owned())?;
+    Ok(snapshot(&scene))
+}
 
 #[cfg(all(target_os = "windows", debug_assertions))]
 fn attach_parent_console() {
@@ -91,6 +132,7 @@ fn main() {
             app.deep_link().handle_cli_arguments(args.iter());
         }))
         .manage(p2p::P2pState::new())
+        .manage(SceneState::default())
         .manage(host::HostState::new())
         .manage(join::JoinState::new())
         .manage(frp::FrpState::new())
@@ -137,6 +179,9 @@ fn main() {
         })
         .on_window_event(tray::handle_window_event)
         .invoke_handler(tauri::generate_handler![
+            inspect_gds_file,
+            import_gds,
+            scene_snapshot,
             p2p::get_p2p_status,
             stop_tunnel,
             restart_application,

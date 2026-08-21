@@ -306,26 +306,26 @@ pub struct CellGroup {
     pub object_ids: Vec<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GdsFileInfo {
     pub file_path: PathBuf,
     pub cells: Vec<GdsCellInfo>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GdsCellInfo {
     pub name: String,
     pub layers: Vec<GdsLayerInfo>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GdsLayerInfo {
     pub selection: GdsLayerSelection,
     pub polygon_count: usize,
     pub bounds: Bounds2d,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct GdsLayerSelection {
     pub cell_name: String,
     pub layer: i32,

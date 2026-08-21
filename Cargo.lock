@@ -1959,6 +1959,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "gds3d"
+version = "0.1.4"
+dependencies = [
+ "base64 0.23.1",
+ "crypto_box",
+ "flate2",
+ "fontdb",
+ "iroh",
+ "keyring",
+ "log",
+ "md5",
+ "reqwest",
+ "sculk",
+ "serde",
+ "serde_json",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-deep-link",
+ "tauri-plugin-dialog",
+ "tauri-plugin-log",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tauri-plugin-window-state",
+ "tempfile",
+ "tokio",
+ "windows-sys 0.61.2",
+ "zip 8.6.0",
+]
+
+[[package]]
 name = "generator"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5070,40 +5104,6 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "sealantern-connect"
-version = "1.0.0"
-dependencies = [
- "base64 0.23.1",
- "crypto_box",
- "flate2",
- "fontdb",
- "iroh",
- "keyring",
- "log",
- "md5",
- "reqwest",
- "sculk",
- "serde",
- "serde_json",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-deep-link",
- "tauri-plugin-dialog",
- "tauri-plugin-log",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tauri-plugin-window-state",
- "tempfile",
- "tokio",
- "windows-sys 0.61.2",
- "zip 8.6.0",
 ]
 
 [[package]]

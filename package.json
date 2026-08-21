@@ -21,7 +21,7 @@
     "fmt:check": "oxfmt -c src/.oxfmtrc.json --check src scripts package.json pnpm-workspace.yaml README.md"
   },
   "dependencies": {
-    "@babylonjs/core": "^8",
+    "@babylonjs/core": "^9",
     "@lucide/svelte": "^1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-autostart": "^2",

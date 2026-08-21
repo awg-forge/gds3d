@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@babylonjs/core':
-        specifier: ^8
-        version: 8.56.2
+        specifier: ^9
+        version: 9.22.0
       '@lucide/svelte':
         specifier: ^1
         version: 1.28.0(svelte@5.56.8)
@@ -78,8 +78,8 @@ importers:
 
 packages:
 
-  '@babylonjs/core@8.56.2':
-    resolution: {integrity: sha512-UShs1pt8tSTLYOoITWclXPNrUZUpuHvB2Ur2L1D+uM8c9qaAYOi9gjkurOkQwIlbPGqwQHWImGEyiyix0mQ1dg==}
+  '@babylonjs/core@9.22.0':
+    resolution: {integrity: sha512-rbQJWF9bUiVAMpUxGnEPQvqg/ZMzoKFZ8bahlzXs35vHyGENRSLPYRT14k5GtMPQGIerbWwkLVW8wNob3Kj6ug==}
 
   '@emnapi/core@2.0.0-alpha.3':
     resolution: {integrity: sha512-AZypUeJ/yByuxyS7BlSNRDOMLMlROYtjYdIAuBmJssVz1UJDSeYxLrdizhXCFYhedC5bqd/ASy8EuNXbVVXp9g==}
@@ -1104,7 +1104,7 @@ packages:
 
 snapshots:
 
-  '@babylonjs/core@8.56.2': {}
+  '@babylonjs/core@9.22.0': {}
 
   '@emnapi/core@2.0.0-alpha.3':
     dependencies:

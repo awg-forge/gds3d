@@ -234,6 +234,9 @@
   border-bottom: 1px solid var(--border);
   background: transparent;
 }
+.titlebar.macos-overlay {
+  padding-left: 78px;
+}
 .titlebar-menu {
   min-width: 0;
   display: flex;

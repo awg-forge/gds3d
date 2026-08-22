@@ -9,6 +9,8 @@ mod model;
 
 use serde::Serialize;
 use std::collections::BTreeSet;
+#[cfg(target_os = "macos")]
+use std::ffi::c_void;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -25,6 +27,24 @@ const PREFERENCES_FILENAME: &str = "desktop-preferences.json";
 const TRAY_SHOW_ID: &str = "tray-show";
 const TRAY_QUIT_ID: &str = "tray-quit";
 static SYSTEM_FONTS: OnceLock<Vec<String>> = OnceLock::new();
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn gds3d_install_window_style(window: *mut c_void) -> i32;
+}
+
+#[cfg(target_os = "macos")]
+fn install_macos_window_style(app: &AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window(MAIN_WINDOW_LABEL)
+        .ok_or_else(|| "main window is unavailable".to_owned())?;
+    let native_window = window.ns_window().map_err(|error| error.to_string())?;
+    if unsafe { gds3d_install_window_style(native_window) } == 1 {
+        Ok(())
+    } else {
+        Err("failed to install macOS window style".to_owned())
+    }
+}
 
 #[derive(Clone, serde::Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -408,6 +428,10 @@ fn main() {
                 && let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL)
             {
                 window.restore_state(window_state_flags())?;
+            }
+            #[cfg(target_os = "macos")]
+            if let Err(error) = install_macos_window_style(app.handle()) {
+                eprintln!("{error}");
             }
             setup_tray(app)?;
             Ok(())

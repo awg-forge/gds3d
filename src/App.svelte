@@ -230,14 +230,16 @@
 
 <div class="app-shell sidebar-collapsed">
   <!-- svelte-ignore a11y_no_static_element_interactions (native window drag gesture) -->
-  <header class="titlebar" onmousedown={handleTitlebarMouseDown}>
+  <header class:macos-overlay={isMac} class="titlebar" onmousedown={handleTitlebarMouseDown}>
     <div class="titlebar-menu">
-      <button
-        class="menu-logo-button"
-        title={t("gds.layout")}
-        aria-label={t("gds.layout")}
-        onclick={() => navigate("layout")}><img class="menu-logo" src={logo} alt="" /></button
-      >
+      {#if !isMac}
+        <button
+          class="menu-logo-button"
+          title={t("gds.layout")}
+          aria-label={t("gds.layout")}
+          onclick={() => navigate("layout")}><img class="menu-logo" src={logo} alt="" /></button
+        >
+      {/if}
       <nav class="menubar" aria-label="gds3d">
         <div class="menu-root">
           <button
@@ -345,19 +347,21 @@
           onclick={() => changeThemeMode("dark")}><Moon size={16} /></button
         >
       </div>
-      <div class="window-controls">
-        <button class="window-button" title={t("gds.windowMinimize")} onclick={minimizeWindow}
-          ><Minus size={12} /></button
-        >
-        <button class="window-button" title={t("gds.windowMaximize")} onclick={maximizeWindow}
-          >{#if maximized}<Copy size={12} />{:else}<Square size={12} />{/if}</button
-        >
-        <button
-          class="window-button window-button-close"
-          title={t("gds.windowClose")}
-          onclick={closeWindow}><X size={12} /></button
-        >
-      </div>
+      {#if !isMac}
+        <div class="window-controls">
+          <button class="window-button" title={t("gds.windowMinimize")} onclick={minimizeWindow}
+            ><Minus size={12} /></button
+          >
+          <button class="window-button" title={t("gds.windowMaximize")} onclick={maximizeWindow}
+            >{#if maximized}<Copy size={12} />{:else}<Square size={12} />{/if}</button
+          >
+          <button
+            class="window-button window-button-close"
+            title={t("gds.windowClose")}
+            onclick={closeWindow}><X size={12} /></button
+          >
+        </div>
+      {/if}
     </div>
   </header>
 

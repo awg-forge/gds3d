@@ -1,5 +1,22 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "gds3d",
+        "width": 1300,
+        "height": 800,
+        "minWidth": 1200,
+        "minHeight": 700,
+        "center": true,
+        "visible": true,
+        "transparent": true,
+        "backgroundColor": "#00000000",
+        "decorations": false
+      }
+    ]
+  },
   "bundle": {
     "targets": ["deb", "rpm"],
     "icon": [

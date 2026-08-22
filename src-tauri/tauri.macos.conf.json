@@ -1,5 +1,27 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "gds3d",
+        "width": 1300,
+        "height": 800,
+        "minWidth": 1200,
+        "minHeight": 700,
+        "center": true,
+        "transparent": true,
+        "backgroundColor": "#00000000",
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 18
+        }
+      }
+    ]
+  },
   "bundle": {
     "targets": ["dmg"],
     "icon": [
@@ -8,6 +30,21 @@
       "icons/128x128@2x.png",
       "icons/icon.icns"
     ],
-    "macOS": {}
+    "macOS": {
+      "dmg": {
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 198
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 198
+        }
+      }
+    }
   }
 }

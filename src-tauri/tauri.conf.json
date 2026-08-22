@@ -12,19 +12,6 @@
   "app": {
     "enableGTKAppId": true,
     "macOSPrivateApi": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "gds3d",
-        "width": 1300,
-        "height": 800,
-        "minWidth": 1200,
-        "minHeight": 700,
-        "center": true,
-        "visible": true,
-        "decorations": false
-      }
-    ],
     "security": {
       "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'"
     }

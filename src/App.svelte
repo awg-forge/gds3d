@@ -23,6 +23,7 @@
 
   type View = "layout" | "settings";
   type ThemeMode = "light" | "dark";
+  const splashSessionKey = "gds3d.splash-shown";
   let activeView = $state<View>(readView());
   let themeMode = $state<ThemeMode>(readThemeMode());
   let fontSize = $state(readFontSize());
@@ -30,7 +31,7 @@
   let lightingIntensity = $state(readLightingIntensity());
   let maximized = $state(false);
   let aboutOpen = $state(false);
-  let splashVisible = $state(true);
+  let splashVisible = $state(shouldShowSplash());
   let isMac = $state(false);
   let shortcutModifier = $state("Ctrl");
 
@@ -89,6 +90,12 @@
   function readView(): View {
     const saved = localStorage.getItem("gds3d.active-view");
     return saved === "settings" ? saved : "layout";
+  }
+
+  function shouldShowSplash(): boolean {
+    if (sessionStorage.getItem(splashSessionKey) === "true") return false;
+    sessionStorage.setItem(splashSessionKey, "true");
+    return true;
   }
 
   function readThemeMode(): ThemeMode {

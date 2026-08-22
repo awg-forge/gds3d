@@ -11,6 +11,9 @@ importers:
       '@babylonjs/core':
         specifier: ^9
         version: 9.22.0
+      '@babylonjs/serializers':
+        specifier: ^9
+        version: 9.22.0(@babylonjs/core@9.22.0)(babylonjs-gltf2interface@9.22.0)
       '@lucide/svelte':
         specifier: ^1
         version: 1.28.0(svelte@5.56.8)
@@ -62,6 +65,15 @@ packages:
 
   '@babylonjs/core@9.22.0':
     resolution: {integrity: sha512-rbQJWF9bUiVAMpUxGnEPQvqg/ZMzoKFZ8bahlzXs35vHyGENRSLPYRT14k5GtMPQGIerbWwkLVW8wNob3Kj6ug==}
+
+  '@babylonjs/serializers@9.22.0':
+    resolution: {integrity: sha512-rpvuxsZACPHJ03FbSp+g1eQ91C2srEIFF8p8WgVzrl7heiO12SBdisFtiNr/596rXd19/gE2GXihv2q0i2LXXA==}
+    peerDependencies:
+      '@babylonjs/core': ^9.0.0
+      babylonjs-gltf2interface: ^9.0.0
+
+  babylonjs-gltf2interface@9.22.0:
+    resolution: {integrity: sha512-6YSn6Ehy45Tila36MEH4/Q+60j3yv1NUJOlcaIji07VPd6RliloRz9QJ+eWcGe1dn5ckPcCtG8GOmgdS/Zx6Jw==}
 
   '@emnapi/core@2.0.0-alpha.3':
     resolution: {integrity: sha512-AZypUeJ/yByuxyS7BlSNRDOMLMlROYtjYdIAuBmJssVz1UJDSeYxLrdizhXCFYhedC5bqd/ASy8EuNXbVVXp9g==}
@@ -938,6 +950,13 @@ packages:
 snapshots:
 
   '@babylonjs/core@9.22.0': {}
+
+  '@babylonjs/serializers@9.22.0(@babylonjs/core@9.22.0)(babylonjs-gltf2interface@9.22.0)':
+    dependencies:
+      '@babylonjs/core': 9.22.0
+      babylonjs-gltf2interface: 9.22.0
+
+  babylonjs-gltf2interface@9.22.0: {}
 
   '@emnapi/core@2.0.0-alpha.3':
     dependencies:

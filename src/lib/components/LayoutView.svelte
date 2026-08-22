@@ -5,6 +5,7 @@
     chooseGdsPath,
     chooseProjectPath,
     chooseProjectSavePath,
+    chooseViewExportPath,
     clearScene,
     createBaseplate,
     deleteSceneObject,
@@ -13,18 +14,23 @@
     inspectGdsFile,
     loadProject,
     saveProject,
+    exportView,
+    exportModel,
     setObjectsVisibility,
     updateObjectDisplay,
     type GdsFileInfo,
     type GdsLayerSelection,
     type SceneSnapshot,
+    type ViewCapture,
+    type ViewExportSettings,
   } from "@api/gds";
   import { t } from "@i18n";
-  import { showToast } from "../toast";
+  import { finishToast, showLoadingToast, showToast } from "../toast";
   import Button from "./ui/Button.svelte";
   import ColorPicker from "./ui/ColorPicker.svelte";
   import Dialog from "./ui/Dialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
+  import ExportDialog from "./ExportDialog.svelte";
   import Input from "./ui/Input.svelte";
   import Slider from "./ui/Slider.svelte";
   import Viewport from "../Viewport.svelte";
@@ -140,6 +146,9 @@
   const pendingDisplayUpdates = new Map<string, DisplayPatch>();
   let displayUpdateTimer: number | undefined;
   let viewportMeshWaiter: ViewportMeshWaiter | null = null;
+  let captureViewport: ((width: number, height: number) => Promise<ViewCapture>) | null = null;
+  let exportViewportModel: ((format: "glb" | "stl") => Promise<string>) | null = null;
+  let exportDialogOpen = $state(false);
   let readyViewportResetKey = -1;
   let readyViewportObjectIds = "";
   let selected = $derived(
@@ -461,6 +470,9 @@
         case "saveProject":
           void saveCurrentProject();
           break;
+        case "saveAs":
+          void saveCurrentView();
+          break;
         case "closeProject":
           void closeProject();
           break;
@@ -512,26 +524,29 @@
   async function confirmImport(selections: GdsLayerSelection[]) {
     const candidate = importCandidate;
     if (!candidate) return;
-    await run(async () => {
-      const importedScene = await importGds(candidate.file_path, selections);
-      scene = importedScene;
-      selectedId = firstLayerId(importedScene);
-      sceneRevision += 1;
-      const meshesReady = waitForViewportMeshes(
-        sceneRevision,
-        snapshotObjectIds(importedScene),
-      );
-      await tick();
-      await meshesReady;
-      importCandidate = null;
-      showToast(t("gds.importSuccess"), "success");
-    }, (reason) => t("gds.importFailed", { message: errorMessage(reason) }));
+    await run(
+      async () => {
+        const importedScene = await importGds(candidate.file_path, selections);
+        scene = importedScene;
+        selectedId = firstLayerId(importedScene);
+        sceneRevision += 1;
+        const meshesReady = waitForViewportMeshes(sceneRevision, snapshotObjectIds(importedScene));
+        await tick();
+        await meshesReady;
+        importCandidate = null;
+        showToast(t("gds.importSuccess"), "success");
+      },
+      (reason) => t("gds.importFailed", { message: errorMessage(reason) }),
+    );
   }
 
   async function openProject() {
     const path = await chooseProjectPath();
     if (!path) return;
-    await run(async () => {
+    busy = true;
+    const toastId = showLoadingToast(t("gds.projectOpening"));
+    try {
+      await nextPaint();
       const loadedScene = await loadProject(path);
       scene = loadedScene;
       sceneRevision += 1;
@@ -539,8 +554,12 @@
       const meshesReady = waitForViewportMeshes(sceneRevision, snapshotObjectIds(loadedScene));
       await tick();
       await meshesReady;
-      showToast(t("gds.projectOpenSuccess"), "success");
-    }, (reason) => t("gds.projectOpenFailed", { message: errorMessage(reason) }));
+      finishToast(toastId, t("gds.projectOpenSuccess"), "success");
+    } catch (reason) {
+      finishToast(toastId, t("gds.projectOpenFailed", { message: errorMessage(reason) }), "error");
+    } finally {
+      busy = false;
+    }
   }
 
   async function saveCurrentProject() {
@@ -557,6 +576,48 @@
     );
   }
 
+  async function saveCurrentView() {
+    if (!scene || !captureViewport) return;
+    exportDialogOpen = true;
+  }
+
+  async function exportCurrentView(settings: ViewExportSettings) {
+    const modelExport = settings.format === "glb" || settings.format === "stl";
+    if ((!modelExport && !captureViewport) || (modelExport && !exportViewportModel)) return;
+    const path = await chooseViewExportPath(settings.format);
+    if (!path) return;
+    exportDialogOpen = false;
+    busy = true;
+    const toastId = showLoadingToast(
+      modelExport
+        ? t("gds.exportingModel", { format: settings.format.toUpperCase() })
+        : t("gds.exporting", { width: settings.width, height: settings.height }),
+    );
+    try {
+      await nextPaint();
+      if (modelExport) {
+        const dataUrl = await exportViewportModel?.(settings.format as "glb" | "stl");
+        if (!dataUrl) throw new Error(t("gds.exportUnavailable"));
+        await exportModel(path, dataUrl);
+      } else {
+        const capture = await captureViewport?.(settings.width, settings.height);
+        if (!capture) throw new Error(t("gds.exportUnavailable"));
+        await exportView(path, settings.format as "png" | "svg", capture);
+      }
+      finishToast(toastId, t("gds.exportSuccess"), "success");
+    } catch (reason) {
+      finishToast(toastId, t("gds.exportFailed", { message: errorMessage(reason) }), "error");
+    } finally {
+      busy = false;
+    }
+  }
+
+  function nextPaint(): Promise<void> {
+    return new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => window.setTimeout(resolve, 0))),
+    );
+  }
+
   async function closeProject() {
     await flushDisplayUpdates();
     await run(
@@ -569,10 +630,7 @@
         closeContextMenu();
         renameOpen = false;
         sceneRevision += 1;
-        const meshesReady = waitForViewportMeshes(
-          sceneRevision,
-          snapshotObjectIds(clearedScene),
-        );
+        const meshesReady = waitForViewportMeshes(sceneRevision, snapshotObjectIds(clearedScene));
         await tick();
         await meshesReady;
         showToast(t("gds.closeProjectSuccess"), "success");
@@ -620,6 +678,10 @@
     window.dispatchEvent(new CustomEvent("gds3d-reset-camera"));
   }
 </script>
+
+{#if exportDialogOpen}
+  <ExportDialog {busy} onexport={exportCurrentView} oncancel={() => (exportDialogOpen = false)} />
+{/if}
 
 <div class="layout-page" aria-busy={busy}>
   <div
@@ -773,6 +835,8 @@
           onSelect={(id) => (selectedId = id)}
           onMeshesReady={handleViewportMeshesReady}
           onMeshesError={handleViewportMeshesError}
+          onCaptureReady={(capture) => (captureViewport = capture)}
+          onModelExportReady={(exporter) => (exportViewportModel = exporter)}
         />{:else}<div class="viewport-empty">
           <FolderOpen size={32} /><strong>{t("gds.openLayout")}</strong><span
             >{t("gds.sceneAppearsHere")}</span

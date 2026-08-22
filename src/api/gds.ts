@@ -29,6 +29,17 @@ export interface SceneSnapshot {
   revision: number;
   objects: unknown[];
 }
+export type ViewExportFormat = "png" | "svg" | "glb" | "stl";
+export interface ViewCapture {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+export interface ViewExportSettings {
+  format: ViewExportFormat;
+  width: number;
+  height: number;
+}
 
 export function inspectGdsFile(path: string): Promise<GdsFileInfo> {
   return invoke("inspect_gds_file", { path });
@@ -71,6 +82,16 @@ export function saveProject(path: string): Promise<void> {
 export function loadProject(path: string): Promise<SceneSnapshot> {
   return invoke("load_project", { path });
 }
+export function exportView(
+  path: string,
+  format: ViewExportFormat,
+  capture: ViewCapture,
+): Promise<void> {
+  return invoke("export_view", { path, format, capture });
+}
+export function exportModel(path: string, dataUrl: string): Promise<void> {
+  return invoke("export_model", { path, dataUrl });
+}
 
 export async function chooseGdsPath(): Promise<string | null> {
   const selected = await open({
@@ -93,4 +114,19 @@ export function chooseProjectSavePath(): Promise<string | null> {
     defaultPath: "gds3d-project.gds3d",
     filters: [{ name: "gds3d project", extensions: ["gds3d"] }],
   });
+}
+
+export async function chooseViewExportPath(format: ViewExportFormat): Promise<string | null> {
+  const descriptions: Record<ViewExportFormat, string> = {
+    png: "PNG image",
+    svg: "SVG image",
+    glb: "glTF binary model",
+    stl: "STL model",
+  };
+  const selected = await save({
+    defaultPath: `gds3d-view.${format}`,
+    filters: [{ name: descriptions[format], extensions: [format] }],
+  });
+  if (!selected) return null;
+  return selected.toLowerCase().endsWith(`.${format}`) ? selected : `${selected}.${format}`;
 }

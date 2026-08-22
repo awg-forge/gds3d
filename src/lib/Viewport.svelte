@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
   import { Color3 } from "@babylonjs/core/Maths/math.color";
   import { Color4 } from "@babylonjs/core/Maths/math.color";
@@ -13,6 +13,7 @@
   import { Material } from "@babylonjs/core/Materials/material";
   import { Vector3 } from "@babylonjs/core/Maths/math.vector";
   import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
+  import type { ViewCapture } from "@api/gds";
   import { t } from "@i18n";
   import defaultTheme from "../themes/default";
 
@@ -26,6 +27,10 @@
     onSelect?: (id: string | null) => void;
     onMeshesReady?: (resetKey: number, objectIds: string) => void;
     onMeshesError?: (resetKey: number, reason: unknown) => void;
+    onCaptureReady?: (
+      capture: ((width: number, height: number) => Promise<ViewCapture>) | null,
+    ) => void;
+    onModelExportReady?: (exporter: ((format: "glb" | "stl") => Promise<string>) | null) => void;
   }
   type ViewportRecord = {
     kind?: string;
@@ -98,8 +103,11 @@
     onSelect,
     onMeshesReady,
     onMeshesError,
+    onCaptureReady,
+    onModelExportReady,
   }: Props = $props();
   let canvas = $state<HTMLCanvasElement>();
+  let exportCover = $state<string | null>(null);
   let scene: Scene | null = null;
   let camera: ArcRotateCamera | null = null;
   let meshes: Mesh[] = [];
@@ -254,11 +262,14 @@
       };
       const cancel = () => finish(null);
       cancelMeshBuild = cancel;
-      worker.onmessage = ({ data }: MessageEvent<MeshWorkerResponse>) => {
+      worker.addEventListener("message", ({ data }: MessageEvent<MeshWorkerResponse>) => {
         if (data.ok) finish(data.layers);
         else finish(null, new Error(data.message));
-      };
-      worker.onerror = (event) => finish(null, new Error(event.message || "mesh worker failed"));
+      });
+      worker.addEventListener("error", (event) =>
+        finish(null, new Error(event.message || "mesh worker failed")),
+      );
+      // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Worker.postMessage has no targetOrigin parameter.
       worker.postMessage({ layers });
     });
   }
@@ -381,6 +392,7 @@
       renderedLayers.set(layer.id, rendered);
       updateLayerAppearance(record, rendered);
       if (layerIndex + 1 < builtLayers.length) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- Yielding between GPU uploads keeps the UI responsive.
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
     }
@@ -504,6 +516,40 @@
     cameraAnimationFrame = requestAnimationFrame(animate);
   }
 
+  function canvasPngDataUrl(target: HTMLCanvasElement): Promise<string> {
+    return new Promise((resolve, reject) => {
+      target.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error(t("gds.exportEncodeFailed")));
+          return;
+        }
+        const reader = new FileReader();
+        reader.addEventListener("load", () => {
+          if (typeof reader.result === "string") resolve(reader.result);
+          else reject(new Error(t("gds.exportEncodeFailed")));
+        });
+        reader.addEventListener("error", () =>
+          reject(reader.error ?? new Error(t("gds.exportEncodeFailed"))),
+        );
+        reader.readAsDataURL(blob);
+      }, "image/png");
+    });
+  }
+
+  function blobDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener("load", () => {
+        if (typeof reader.result === "string") resolve(reader.result);
+        else reject(new Error(t("gds.exportEncodeFailed")));
+      });
+      reader.addEventListener("error", () =>
+        reject(reader.error ?? new Error(t("gds.exportEncodeFailed"))),
+      );
+      reader.readAsDataURL(blob);
+    });
+  }
+
   onMount(() => {
     if (!canvas) return;
     const viewportCanvas = canvas;
@@ -524,6 +570,54 @@
       scene,
     );
     camera = activeCamera;
+    onCaptureReady?.(async (width, height) => {
+      const maximumSize = viewportEngine.getCaps().maxTextureSize;
+      if (width > maximumSize || height > maximumSize) {
+        throw new Error(t("gds.exportTextureLimit", { width, height, maximum: maximumSize }));
+      }
+      const originalWidth = viewportEngine.getRenderWidth();
+      const originalHeight = viewportEngine.getRenderHeight();
+      exportCover = viewportCanvas.toDataURL("image/png");
+      await tick();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      try {
+        viewportEngine.setSize(width, height, true);
+        scene?.render(false, true);
+        const dataUrl = await canvasPngDataUrl(viewportCanvas);
+        return { dataUrl, width, height };
+      } finally {
+        viewportEngine.setSize(originalWidth, originalHeight, true);
+        scene?.render(false, true);
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        exportCover = null;
+      }
+    });
+    onModelExportReady?.(async (format) => {
+      const exportMeshes = meshes.filter((mesh) => mesh.isEnabled() && mesh.isVisible);
+      if (format === "glb") {
+        const { GLTF2Export } = await import("@babylonjs/serializers/glTF");
+        const included = new Set(exportMeshes);
+        const data = await GLTF2Export.GLBAsync(scene!, "gds3d-model", {
+          shouldExportNode: (node) => node instanceof Mesh && included.has(node),
+        });
+        const file = data.files["gds3d-model.glb"];
+        if (!(file instanceof Blob)) throw new Error(t("gds.exportEncodeFailed"));
+        return blobDataUrl(file);
+      }
+      const { STLExport } = await import("@babylonjs/serializers/stl");
+      const clones = exportMeshes.map((mesh) => {
+        const clone = mesh.clone(`${mesh.name}-stl-export`, null, true)!;
+        clone.makeGeometryUnique();
+        clone.bakeCurrentTransformIntoVertices();
+        return clone;
+      });
+      try {
+        const data = STLExport.CreateSTL(clones, false, "gds3d-model", true, true, true);
+        return blobDataUrl(new Blob([data], { type: "model/stl" }));
+      } finally {
+        for (const clone of clones) clone.dispose(false, false);
+      }
+    });
     activeCamera.attachControl(false, false, 2);
     activeCamera.wheelDeltaPercentage = 0.01;
     activeCamera.panningSensibility = homePanningSensibility;
@@ -587,6 +681,8 @@
       meshBuildGeneration += 1;
       cancelActiveMeshBuild();
       requestEngineResize = null;
+      onCaptureReady?.(null);
+      onModelExportReady?.(null);
       clearMeshes();
       ambientLight?.dispose();
       keyLight?.dispose();
@@ -622,6 +718,7 @@
 
 <div class="viewport-frame">
   <canvas bind:this={canvas} aria-label={t("gds.viewportLabel")}></canvas>
+  {#if exportCover}<img class="export-cover" src={exportCover} alt="" aria-hidden="true" />{/if}
 </div>
 
 <style>
@@ -631,10 +728,20 @@
     height: 100%;
     overflow: hidden;
   }
+  .export-cover {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    pointer-events: none;
+  }
   canvas {
     display: block;
     inline-size: 100%;
     block-size: 100%;
+    outline: none;
     touch-action: none;
     cursor: grab;
   }

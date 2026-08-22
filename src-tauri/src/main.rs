@@ -1,6 +1,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod archive;
+mod export;
 // The scene module retains APIs used by the next editor features (baseplates,
 // selection and partial GDS imports). They are intentionally kept while the
 // Svelte editor is migrated from the egui application.
@@ -472,6 +473,8 @@ fn main() {
             delete_scene_object,
             save_project,
             load_project,
+            export::export_view,
+            export::export_model,
             get_desktop_preferences,
             update_desktop_preferences,
             get_system_fonts,

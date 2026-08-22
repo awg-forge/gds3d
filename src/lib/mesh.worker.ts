@@ -22,18 +22,16 @@ type LayerMeshData = {
   indices: Uint32Array;
 };
 
-type MeshResponse =
-  | { ok: true; layers: LayerMeshData[] }
-  | { ok: false; message: string };
+type MeshResponse = { ok: true; layers: LayerMeshData[] } | { ok: false; message: string };
 
 type WorkerScope = {
-  onmessage: ((event: MessageEvent<MeshRequest>) => void) | null;
+  addEventListener: (type: "message", listener: (event: MessageEvent<MeshRequest>) => void) => void;
   postMessage: (message: MeshResponse, transfer?: Transferable[]) => void;
 };
 
 const worker = self as unknown as WorkerScope;
 
-worker.onmessage = ({ data }) => {
+worker.addEventListener("message", ({ data }) => {
   try {
     const layers = data.layers.map(buildLayerMesh);
     const transfer: ArrayBuffer[] = layers.flatMap(({ positions, normals, indices }) => [
@@ -41,14 +39,17 @@ worker.onmessage = ({ data }) => {
       normals.buffer as ArrayBuffer,
       indices.buffer as ArrayBuffer,
     ]);
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Worker.postMessage has no targetOrigin parameter.
     worker.postMessage({ ok: true, layers }, transfer);
   } catch (reason) {
-    worker.postMessage({
+    const response: MeshResponse = {
       ok: false,
       message: reason instanceof Error ? reason.message : String(reason),
-    });
+    };
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Worker.postMessage has no targetOrigin parameter.
+    worker.postMessage(response);
   }
-};
+});
 
 function buildLayerMesh(layer: LayerInput): LayerMeshData {
   const positions: number[] = [];

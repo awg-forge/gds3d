@@ -12,6 +12,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 anyhow = "1"
+base64 = "0.23"
 crc32fast = "1.5"
 gdsii = "0.3"
 i_overlay = { version = "8", features = ["allow_multithreading"] }

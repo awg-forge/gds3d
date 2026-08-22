@@ -21,7 +21,7 @@
   <div class="about-content">
     <img class="about-logo" src={logo} alt="gds3d" />
     <div class="about-copy">
-      <h2>gds3d</h2>
+      <h2 aria-label="gds3d"><span>gds</span><strong>3d</strong></h2>
       <p>{t("gds.aboutDescription")}</p>
       <small>{t("gds.version", { version })}</small>
     </div>
@@ -29,6 +29,14 @@
 </Dialog>
 
 <style>
+  @font-face {
+    font-family: "Gds3d Splash";
+    src: url("../../assets/fonts/CormorantGaramond-MediumItalic.woff2") format("woff2");
+    font-display: block;
+    font-style: italic;
+    font-weight: 500;
+  }
+
   .about-content {
     display: grid;
     grid-template-columns: 92px minmax(0, 1fr);
@@ -47,8 +55,22 @@
   h2 {
     margin: 0 0 9px;
     color: var(--text);
-    font-size: 1.65rem;
-    line-height: 1.1;
+    font-family: "Gds3d Splash", serif;
+    font-size: 2.6rem;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.055em;
+  }
+  h2 span,
+  h2 strong {
+    display: inline-block;
+  }
+  h2 strong {
+    margin-left: 0.08em;
+    color: var(--primary);
+    font-weight: 500;
+    letter-spacing: -0.035em;
+    transform: translateY(-0.04em) rotate(-2deg);
   }
   p {
     margin: 0;

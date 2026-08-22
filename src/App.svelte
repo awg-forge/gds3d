@@ -42,6 +42,7 @@
     | "openGds"
     | "openProject"
     | "saveProject"
+    | "saveAs"
     | "closeProject"
     | "createBaseplate"
     | "renameSelected"
@@ -181,7 +182,7 @@
 
     if (primaryModifier) {
       if (key === "o") action = event.shiftKey ? "openProject" : "openGds";
-      else if (!event.shiftKey && key === "s") action = "saveProject";
+      else if (key === "s") action = event.shiftKey ? "saveAs" : "saveProject";
       else if (!event.shiftKey && key === "n") action = "createBaseplate";
       else if (!event.shiftKey && key === "f") action = "resetCamera";
       else if (isMac && event.metaKey && !event.shiftKey && key === "backspace") {
@@ -269,6 +270,11 @@
               >
               <button role="menuitem" onclick={() => requestLayoutAction("saveProject")}
                 ><span>{t("gds.saveProject")}</span><kbd>{shortcutLabel("S")}</kbd></button
+              >
+              <button role="menuitem" onclick={() => requestLayoutAction("saveAs")}
+                ><span>{t("gds.saveAs")}</span><kbd
+                  >{shortcutModifier === "⌘" ? "⌘⇧S" : "Ctrl+Shift+S"}</kbd
+                ></button
               >
               <div class="menu-separator"></div>
               <button role="menuitem" onclick={() => requestLayoutAction("closeProject")}

@@ -10,7 +10,7 @@
         "minWidth": 1200,
         "minHeight": 700,
         "center": true,
-        "visible": true,
+        "visible": false,
         "transparent": true,
         "backgroundColor": "#00000000",
         "decorations": false

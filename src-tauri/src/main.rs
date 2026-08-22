@@ -156,6 +156,11 @@ fn show_main_window(app: &AppHandle) {
     let _ = window.set_focus();
 }
 
+#[tauri::command]
+fn frontend_ready(app: AppHandle) {
+    show_main_window(&app);
+}
+
 fn handle_window_event(window: &TauriWindow<Wry>, event: &WindowEvent) {
     if window.label() != MAIN_WINDOW_LABEL {
         return;
@@ -446,6 +451,7 @@ fn main() {
         })
         .on_window_event(handle_window_event)
         .invoke_handler(tauri::generate_handler![
+            frontend_ready,
             inspect_gds_file,
             import_gds,
             scene_snapshot,

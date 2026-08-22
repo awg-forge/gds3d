@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { Copy, Layers3, Minus, Moon, Settings, Square, Sun, X } from "@lucide/svelte";
   import {
     closeWindow,
     isWindowMaximized,
+    markFrontendReady,
     minimizeWindow,
     onWindowResized,
     startWindowDragging,
@@ -58,6 +59,10 @@
     if (savedLocale === "zh-CN" || savedLocale === "en") setLocale(savedLocale);
     applyTheme();
     applyTypography(fontSize, fontFamily);
+    void tick()
+      .then(() => document.fonts?.ready)
+      .then(() => markFrontendReady())
+      .catch((error) => console.error("Failed to reveal the main window", error));
     const closeMenu = () => (openMenu = null);
     window.addEventListener("click", closeMenu);
     window.addEventListener("contextmenu", preventNativeContextMenu);

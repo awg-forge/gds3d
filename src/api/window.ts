@@ -11,6 +11,10 @@ export function restartApplication(): Promise<void> {
   return invoke("restart_application");
 }
 
+export function markFrontendReady(): Promise<void> {
+  return invoke("frontend_ready");
+}
+
 export function minimizeWindow(): Promise<void> {
   return mainWindow.minimize();
 }

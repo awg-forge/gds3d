@@ -1,138 +1,139 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { t } from "@i18n";
-  import logo from "../../assets/logo.png";
 
   let { onready } = $props<{ onready: () => void }>();
 
-  const durationMs = 1000;
-  let logoVisible = $state(false);
-  let contentVisible = $state(false);
+  const durationMs = 2000;
+  const exitDurationMs = 280;
+  let visible = $state(false);
+  let leaving = $state(false);
 
   onMount(() => {
-    const logoTimer = window.setTimeout(() => (logoVisible = true), 24);
-    const contentTimer = window.setTimeout(() => (contentVisible = true), 120);
+    const enterTimer = window.setTimeout(() => (visible = true), 40);
+    const exitTimer = window.setTimeout(() => (leaving = true), durationMs - exitDurationMs);
     const readyTimer = window.setTimeout(onready, durationMs);
     return () => {
-      window.clearTimeout(logoTimer);
-      window.clearTimeout(contentTimer);
+      window.clearTimeout(enterTimer);
+      window.clearTimeout(exitTimer);
       window.clearTimeout(readyTimer);
     };
   });
 </script>
 
-<div class="splash-screen">
-  <div class="splash-content">
-    <div class:visible={logoVisible} class="splash-logo">
-      <img src={logo} alt="gds3d" width="88" height="88" />
-    </div>
-    <div class:visible={contentVisible} class="splash-text">
-      <h1>gds3d</h1>
-      <p>{t("gds.splashSubtitle")}</p>
-    </div>
-    <div class:visible={contentVisible} class="splash-loader" aria-label={t("gds.splashLoading")}>
-      <span></span><span></span><span></span>
-    </div>
-  </div>
+<div class:visible class:leaving class="splash-screen">
+  <main class="splash-content" aria-label={t("gds.splashLoading")} aria-live="polite">
+    <h1 aria-label="gds3d"><span>gds</span><strong>3d</strong></h1>
+    <div class="splash-rule" aria-hidden="true"><span></span></div>
+  </main>
 </div>
 
 <style>
+  @font-face {
+    font-family: "Gds3d Splash";
+    src: url("../../assets/fonts/CormorantGaramond-MediumItalic.woff2") format("woff2");
+    font-display: block;
+    font-style: italic;
+    font-weight: 500;
+  }
+
   .splash-screen {
     position: fixed;
     z-index: 1000;
     inset: 0;
     display: grid;
     place-items: center;
+    color: var(--text);
     background: var(--surface-soft);
+    opacity: 1;
+    transition: opacity 240ms ease;
+  }
+
+  .splash-screen.visible {
+    opacity: 1;
+  }
+
+  .splash-screen.leaving {
+    opacity: 0;
   }
 
   .splash-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-  }
-
-  .splash-logo {
-    opacity: 0;
-    transform: scale(0.72);
-    transition:
-      opacity 0.2s ease,
-      transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-
-  .splash-logo.visible {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  .splash-logo img {
-    display: block;
-    width: 88px;
-    height: 88px;
-    border-radius: var(--gds-radius-xl);
-  }
-
-  .splash-text,
-  .splash-loader {
-    opacity: 0;
-    transition: opacity 0.2s ease;
-  }
-
-  .splash-text.visible,
-  .splash-loader.visible {
-    opacity: 1;
-  }
-
-  .splash-text {
+    width: min(420px, calc(100vw - 64px));
+    display: grid;
+    justify-items: center;
     text-align: center;
+    transform: translateY(8px);
+    opacity: 0;
+    transition:
+      opacity 420ms ease 80ms,
+      transform 560ms cubic-bezier(0.22, 1, 0.36, 1) 80ms;
   }
 
-  .splash-text h1 {
-    margin: 0 0 4px;
-    color: var(--text);
-    font-size: 1.7rem;
-    font-weight: 650;
-    line-height: 1.2;
+  .visible .splash-content {
+    transform: translateY(0);
+    opacity: 1;
   }
 
-  .splash-text p {
+  h1 {
     margin: 0;
-    color: var(--muted);
-    font-size: 0.86rem;
+    font-family: "Gds3d Splash", serif;
+    font-size: clamp(4.25rem, 11vw, 6.2rem);
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.055em;
   }
 
-  .splash-loader {
-    display: flex;
-    gap: 6px;
+  h1 span,
+  h1 strong {
+    display: inline-block;
   }
 
-  .splash-loader span {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+  h1 strong {
+    margin-left: 0.08em;
+    color: var(--primary);
+    font-weight: 500;
+    letter-spacing: -0.035em;
+    transform: translateY(-0.04em) rotate(-2deg);
+  }
+
+  .splash-rule {
+    width: min(390px, calc(100vw - 72px));
+    height: 3px;
+    margin-top: 28px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 16%, var(--border));
+  }
+
+  .splash-rule span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
     background: var(--primary);
-    animation: splash-bounce 1.2s infinite ease-in-out;
+    transform: scaleX(0);
+    transform-origin: left;
   }
 
-  .splash-loader span:nth-child(1) {
-    animation-delay: -0.28s;
+  .visible .splash-rule span {
+    animation: splash-progress 1.5s cubic-bezier(0.22, 0.7, 0.2, 1) 180ms forwards;
   }
 
-  .splash-loader span:nth-child(2) {
-    animation-delay: -0.14s;
-  }
-
-  @keyframes splash-bounce {
-    0%,
-    80%,
-    100% {
-      opacity: 0.46;
-      transform: scale(0.75);
+  @keyframes splash-progress {
+    to {
+      transform: scaleX(1);
     }
-    40% {
-      opacity: 1;
-      transform: scale(1.15);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .splash-screen,
+    .splash-content {
+      transition: none;
+    }
+
+    .visible .splash-rule span {
+      animation: none;
+      transform: scaleX(1);
     }
   }
 </style>

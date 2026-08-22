@@ -10,11 +10,16 @@
   border: 0;
 }
 .spin {
+  transform: translateZ(0) rotate(0deg);
+  transform-box: fill-box;
+  transform-origin: center;
+  backface-visibility: hidden;
+  will-change: transform;
   animation: spin 1s linear infinite;
 }
 @keyframes spin {
   to {
-    transform: rotate(360deg);
+    transform: translateZ(0) rotate(360deg);
   }
 }
 @media (max-width: 760px) {

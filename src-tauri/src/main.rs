@@ -207,12 +207,16 @@ fn snapshot(scene: &model::Scene) -> SceneSnapshot {
 }
 
 #[tauri::command]
-fn inspect_gds_file(path: String) -> Result<model::GdsFileInfo, String> {
-    model::inspect_gds_file(Path::new(&path)).map_err(|error| error.to_string())
+async fn inspect_gds_file(path: String) -> Result<model::GdsFileInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        model::inspect_gds_file(Path::new(&path)).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-fn import_gds(
+async fn import_gds(
     path: String,
     selections: Vec<model::GdsLayerSelection>,
     state: tauri::State<'_, SceneState>,
@@ -220,8 +224,12 @@ fn import_gds(
     if selections.is_empty() {
         return Err("select at least one GDS layer".to_owned());
     }
-    let objects = model::import_gds_layer_selections(Path::new(&path), &selections)
-        .map_err(|error| error.to_string())?;
+    let objects = tauri::async_runtime::spawn_blocking(move || {
+        model::import_gds_layer_selections(Path::new(&path), &selections)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())??;
     let mut scene = state
         .0
         .lock()

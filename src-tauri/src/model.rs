@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use gdsii::I32;
 use gdsii::parser::{Aref, Element, GdsEvent, GdsParser, Path as GdsPath, Sref, Strans};
 use gdsii::types::GdsPoint;
+use i_overlay::core::fill_rule::FillRule;
+use i_overlay::float::simplify::SimplifyShape;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -627,6 +629,12 @@ impl ParsedGdsLayers {
             &mut stack,
             &mut layers,
         )?;
+        for geometry in layers.values_mut() {
+            geometry.polygons = union_layer_polygons(std::mem::take(&mut geometry.polygons));
+            if let Some(bounds) = polygons_bounds(&geometry.polygons) {
+                geometry.bounds = bounds;
+            }
+        }
         Ok(layers)
     }
 
@@ -1054,6 +1062,70 @@ fn polygon_bounds(polygon: &Polygon2d) -> Option<Bounds2d> {
     })
 }
 
+fn polygons_bounds(polygons: &[Polygon2d]) -> Option<Bounds2d> {
+    let mut bounds = None;
+    for polygon in polygons {
+        merge_optional_bounds(&mut bounds, &polygon_bounds(polygon)?);
+    }
+    bounds
+}
+
+fn union_layer_polygons(polygons: Vec<Polygon2d>) -> Vec<Polygon2d> {
+    if polygons.len() < 2 {
+        return polygons;
+    }
+
+    let mut contours = Vec::new();
+    for polygon in polygons {
+        let mut outer = polygon.points;
+        orient_contour(&mut outer, true);
+        contours.push(outer);
+        for mut hole in polygon.holes {
+            orient_contour(&mut hole, false);
+            contours.push(hole);
+        }
+    }
+
+    contours
+        .simplify_shape(FillRule::NonZero)
+        .into_iter()
+        .filter_map(|mut shape| {
+            if shape.is_empty() {
+                return None;
+            }
+            let points = shape.remove(0);
+            let polygon = Polygon2d {
+                points,
+                holes: shape,
+            };
+            polygon_bounds(&polygon)?;
+            Some(polygon)
+        })
+        .collect()
+}
+
+fn orient_contour(contour: &mut [[f32; 2]], counterclockwise: bool) {
+    let area = signed_contour_area(contour);
+    if (area > 0.0) != counterclockwise {
+        contour.reverse();
+    }
+}
+
+fn signed_contour_area(contour: &[[f32; 2]]) -> f64 {
+    if contour.len() < 3 {
+        return 0.0;
+    }
+    contour
+        .iter()
+        .zip(contour.iter().cycle().skip(1))
+        .take(contour.len())
+        .map(|([x1, y1], [x2, y2])| {
+            f64::from(*x1) * f64::from(*y2) - f64::from(*x2) * f64::from(*y1)
+        })
+        .sum::<f64>()
+        * 0.5
+}
+
 fn merge_bounds(target: &mut Bounds2d, other: &Bounds2d) {
     target.min_x = target.min_x.min(other.min_x);
     target.min_y = target.min_y.min(other.min_y);
@@ -1077,8 +1149,9 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        Bounds2d, CellKey, DisplayProperties, GdsLayerObject, Scene, SceneObject, Selection,
-        import_gds_layers, inspect_gds_file, new_baseplate, new_object_id,
+        Bounds2d, CellKey, DisplayProperties, GdsLayerObject, Polygon2d, Scene, SceneObject,
+        Selection, import_gds_layers, inspect_gds_file, new_baseplate, new_object_id,
+        union_layer_polygons,
     };
 
     #[test]
@@ -1254,10 +1327,60 @@ mod tests {
             .iter()
             .find(|layer| layer.selection.layer == 4 && layer.selection.datatype == 1)
             .expect("AWG L4/1 layer");
-        assert!(
-            layer.polygon_count > 2,
-            "expected referenced child geometry to be flattened into AWG"
+        assert_eq!(
+            layer.polygon_count, 2,
+            "expected overlapping AWG geometry to collapse to its two disconnected islands"
         );
+
+        let objects = import_gds_layers(Path::new("../models/AWG_0.8nmCS_16CH_0nmOS.gds"))
+            .expect("import AWG regression model");
+        let imported_layer = objects
+            .iter()
+            .find_map(|object| match object {
+                SceneObject::GdsLayer(layer) if layer.layer == 4 && layer.datatype == 1 => {
+                    Some(layer)
+                }
+                _ => None,
+            })
+            .expect("imported AWG L4/1 layer");
+        assert_eq!(imported_layer.polygons.len(), 2);
+    }
+
+    #[test]
+    fn unions_overlaps_without_joining_disconnected_polygons() {
+        let polygons = vec![
+            test_polygon(0.0, 0.0, 2.0, 2.0),
+            test_polygon(1.0, 0.0, 3.0, 2.0),
+            test_polygon(10.0, 10.0, 11.0, 11.0),
+        ];
+
+        let union = union_layer_polygons(polygons);
+
+        assert_eq!(union.len(), 2);
+        let total_area = union
+            .iter()
+            .map(|polygon| {
+                super::signed_contour_area(&polygon.points).abs()
+                    - polygon
+                        .holes
+                        .iter()
+                        .map(|hole| super::signed_contour_area(hole).abs())
+                        .sum::<f64>()
+            })
+            .sum::<f64>();
+        assert!((total_area - 7.0).abs() < f64::EPSILON);
+    }
+
+    fn test_polygon(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> Polygon2d {
+        Polygon2d {
+            points: vec![
+                [min_x, min_y],
+                [max_x, min_y],
+                [max_x, max_y],
+                [min_x, max_y],
+            ],
+            holes: Vec::new(),
+        }
     }
 
     fn test_gds_layer(file_path: PathBuf, cell_name: &str, bounds: Bounds2d) -> SceneObject {

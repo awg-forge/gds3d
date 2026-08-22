@@ -6,9 +6,6 @@
 !version 0.4
 
 [help] Start development mode
-dev() ? @os("windows") shell~=pwsh:
-    pnpm tauri dev
-
 dev():
     pnpm tauri dev
 

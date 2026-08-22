@@ -135,7 +135,7 @@ jobs:
           echo "Install the \`.deb\` or \`.rpm\` package for your distribution." >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Create release draft
+      - name: Prepare staged release
         uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
@@ -156,7 +156,7 @@ jobs:
             );
 
             if (existing) {
-              core.info(`Release draft ${tag} already exists (${existing.id})`);
+              core.info(`Staged release ${tag} already exists (${existing.id})`);
               return;
             }
 
@@ -170,7 +170,7 @@ jobs:
               draft: true,
               prerelease: process.env.RELEASE_PRERELEASE === 'true',
             });
-            core.info(`Created release draft ${tag} (${release.data.id})`);
+            core.info(`Created staged release ${tag} (${release.data.id})`);
 
   publish-tauri:
     name: Build ${{ matrix.label }}
@@ -268,3 +268,41 @@ jobs:
 
           bash scripts/makedmg.sh "${dmg_path}"
           gh release upload "${RELEASE_TAG}" "${dmg_path}" --clobber
+
+  publish-release:
+    name: Publish release
+    needs:
+      - validate-tag
+      - publish-tauri
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Publish completed release
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ needs.validate-tag.outputs.tag }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const tag = process.env.RELEASE_TAG;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            const release = releases.find((candidate) =>
+              candidate.draft && candidate.tag_name === tag
+            );
+
+            if (!release) {
+              core.setFailed(`Staged release ${tag} was not found`);
+              return;
+            }
+
+            await github.rest.repos.updateRelease({
+              owner,
+              repo,
+              release_id: release.id,
+              draft: false,
+            });
+            core.info(`Published release ${tag} (${release.id})`);

@@ -29,14 +29,6 @@
 </div>
 
 <style>
-  @font-face {
-    font-family: "Gds3d Splash";
-    src: url("../../assets/fonts/CormorantGaramond-MediumItalic.woff2") format("woff2");
-    font-display: block;
-    font-style: italic;
-    font-weight: 500;
-  }
-
   .splash-screen {
     position: fixed;
     z-index: 1000;
@@ -76,8 +68,9 @@
 
   h1 {
     margin: 0;
-    font-family: "Gds3d Splash", serif;
+    font-family: "Gds3d Display", serif;
     font-size: clamp(4.25rem, 11vw, 6.2rem);
+    font-style: italic;
     font-weight: 500;
     line-height: 1;
     letter-spacing: -0.055em;

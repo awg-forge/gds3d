@@ -29,14 +29,6 @@
 </Dialog>
 
 <style>
-  @font-face {
-    font-family: "Gds3d Splash";
-    src: url("../../assets/fonts/CormorantGaramond-MediumItalic.woff2") format("woff2");
-    font-display: block;
-    font-style: italic;
-    font-weight: 500;
-  }
-
   .about-content {
     display: grid;
     grid-template-columns: 92px minmax(0, 1fr);
@@ -55,8 +47,9 @@
   h2 {
     margin: 0 0 9px;
     color: var(--text);
-    font-family: "Gds3d Splash", serif;
+    font-family: "Gds3d Display", serif;
     font-size: 2.6rem;
+    font-style: italic;
     font-weight: 500;
     line-height: 1;
     letter-spacing: -0.055em;

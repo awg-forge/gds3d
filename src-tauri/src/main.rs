@@ -14,14 +14,14 @@ use std::collections::BTreeSet;
 use std::ffi::c_void;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{App, AppHandle, Manager, Window as TauriWindow, WindowEvent, Wry};
 use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 #[derive(Default)]
-struct SceneState(Mutex<model::Scene>);
+struct SceneState(Arc<Mutex<model::ProjectDocument>>);
 
 const MAIN_WINDOW_LABEL: &str = "main";
 const PREFERENCES_FILENAME: &str = "desktop-preferences.json";
@@ -248,11 +248,14 @@ struct BaseplateTarget {
 const MINIMUM_Z_SPAN: f32 = 1.0;
 const Z_SPAN_TOLERANCE: f32 = 0.0001;
 
-fn snapshot(scene: &model::Scene) -> SceneSnapshot {
-    SceneSnapshot {
-        revision: scene.revision(),
-        objects: scene.objects().cloned().collect(),
-    }
+fn snapshot(document: &model::ProjectDocument) -> Result<SceneSnapshot, String> {
+    Ok(SceneSnapshot {
+        revision: document.revision(),
+        objects: document
+            .compile_render_scene()
+            .map_err(|error| error.to_string())?
+            .objects(),
+    })
 }
 
 #[tauri::command]
@@ -273,20 +276,18 @@ async fn import_gds(
     if selections.is_empty() {
         return Err("select at least one GDS layer".to_owned());
     }
-    let objects = tauri::async_runtime::spawn_blocking(move || {
-        model::import_gds_layer_selections(Path::new(&path), &selections)
-            .map_err(|error| error.to_string())
+    let document_state = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut document = document_state
+            .lock()
+            .map_err(|_| "scene state is unavailable".to_owned())?;
+        document
+            .import_gds(Path::new(&path), &selections)
+            .map_err(|error| error.to_string())?;
+        snapshot(&document)
     })
     .await
-    .map_err(|error| error.to_string())??;
-    let mut scene = state
-        .0
-        .lock()
-        .map_err(|_| "scene state is unavailable".to_owned())?;
-    for object in objects {
-        scene.add(object).map_err(|error| error.to_string())?;
-    }
-    Ok(snapshot(&scene))
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -295,7 +296,7 @@ fn scene_snapshot(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, 
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    Ok(snapshot(&scene))
+    snapshot(&scene)
 }
 
 #[tauri::command]
@@ -304,8 +305,8 @@ fn clear_scene(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, Str
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    *scene = model::Scene::default();
-    Ok(snapshot(&scene))
+    *scene = model::ProjectDocument::default();
+    snapshot(&scene)
 }
 
 #[tauri::command]
@@ -317,10 +318,9 @@ fn update_object_display(
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    let object = scene
-        .get_mut(&update.object_id)
+    let display = scene
+        .display_mut(&update.object_id)
         .ok_or_else(|| "scene object not found".to_owned())?;
-    let display = object.display_mut();
     let z_min = update.z_min.unwrap_or(display.z_min);
     let z_max = update.z_max.unwrap_or(display.z_max);
     if z_max - z_min < MINIMUM_Z_SPAN - Z_SPAN_TOLERANCE {
@@ -363,10 +363,10 @@ fn set_objects_visibility(
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
     for object_id in object_ids {
-        let object = scene
-            .get_mut(&object_id)
+        let display = scene
+            .display_mut(&object_id)
             .ok_or_else(|| format!("scene object not found: {object_id}"))?;
-        object.set_visible(visible);
+        display.visible = visible;
     }
     scene.touch();
     Ok(())
@@ -387,10 +387,12 @@ fn create_baseplate(
             cell_name: target.cell_name,
         })
     });
-    let bounds = scene.default_baseplate_bounds(&selection);
-    let baseplate = model::new_baseplate(scene.next_baseplate_name(), bounds);
-    scene.add(baseplate).map_err(|error| error.to_string())?;
-    Ok(snapshot(&scene))
+    let bounds = scene
+        .default_baseplate_bounds(&selection)
+        .map_err(|error| error.to_string())?;
+    let baseplate_name = scene.next_baseplate_name();
+    scene.add_baseplate(baseplate_name, bounds);
+    snapshot(&scene)
 }
 
 #[tauri::command]
@@ -402,10 +404,10 @@ fn delete_scene_object(
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    scene
-        .remove(&object_id)
-        .ok_or_else(|| "scene object not found".to_owned())?;
-    Ok(snapshot(&scene))
+    if !scene.remove_render_object(&object_id) {
+        return Err("scene object not found".to_owned());
+    }
+    snapshot(&scene)
 }
 
 #[tauri::command]
@@ -449,11 +451,7 @@ fn save_project(path: String, state: tauri::State<'_, SceneState>) -> Result<(),
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    archive::write_archive(
-        Path::new(&path),
-        &scene.objects().cloned().collect::<Vec<_>>(),
-    )
-    .map_err(|error| error.to_string())
+    archive::write_project_archive(Path::new(&path), &scene).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -461,17 +459,14 @@ fn load_project(
     path: String,
     state: tauri::State<'_, SceneState>,
 ) -> Result<SceneSnapshot, String> {
-    let objects =
-        archive::read_scene_objects(Path::new(&path)).map_err(|error| error.to_string())?;
+    let document =
+        archive::read_project_document(Path::new(&path)).map_err(|error| error.to_string())?;
     let mut scene = state
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    *scene = model::Scene::default();
-    for object in objects {
-        scene.add(object).map_err(|error| error.to_string())?;
-    }
-    Ok(snapshot(&scene))
+    *scene = document;
+    snapshot(&scene)
 }
 
 fn main() {

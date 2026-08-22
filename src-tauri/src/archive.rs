@@ -8,12 +8,15 @@ use crc32fast::Hasher as Crc32Hasher;
 use flate2::Compression;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
-use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use serde_json::Map;
+use serde_json::Value;
 
-use crate::model::SceneObject;
+use crate::model::{ProjectDocument, SceneObject, SourceDocument};
 
 pub const ARCHIVE_FORMAT_VERSION: u32 = 1;
+pub const DOCUMENT_ARCHIVE_FORMAT_VERSION: u32 = 2;
 pub const SCENE_JSON_NAME: &str = "scene.json";
 pub const RAW_GDS_DIR: &str = "gds";
 
@@ -50,7 +53,74 @@ pub fn read_scene_objects(file_path: &Path) -> anyhow::Result<Vec<SceneObject>> 
         .collect()
 }
 
+/// Write a version 2 `.gds3d` archive containing the editable project document.
+pub fn write_project_archive(file_path: &Path, document: &ProjectDocument) -> anyhow::Result<()> {
+    let path = normalize_output_path(file_path)?;
+    let archive = DocumentArchive {
+        format: "gds3d",
+        version: DOCUMENT_ARCHIVE_FORMAT_VERSION,
+        document,
+    };
+    let mut entries = vec![ZipEntry::from_json(
+        SCENE_JSON_NAME,
+        &serde_json::to_value(archive)?,
+    )?];
+    write_document_sources(&mut entries, document.sources.values())?;
+    write_zip_file(&path, &entries)
+}
+
+/// Read the current project archive, migrating legacy version 1 archives into
+/// the document model without discarding their visible geometry.
+pub fn read_project_document(file_path: &Path) -> anyhow::Result<ProjectDocument> {
+    let entries = read_zip_file(file_path)?;
+    let scene_data = entries
+        .iter()
+        .find(|entry| entry.name == SCENE_JSON_NAME)
+        .ok_or_else(|| anyhow!("project archive is missing scene.json"))?;
+    let value: Value = serde_json::from_slice(&scene_data.data).context("parse scene.json")?;
+    let version = value
+        .get("version")
+        .or_else(|| value.get("format_version"))
+        .and_then(Value::as_u64);
+    match version {
+        Some(version) if version == u64::from(DOCUMENT_ARCHIVE_FORMAT_VERSION) => {
+            let archive: DocumentArchiveOwned =
+                serde_json::from_value(value).context("parse document project archive")?;
+            if archive.format != "gds3d" {
+                bail!("unsupported project archive format: {}", archive.format);
+            }
+            if archive.version != DOCUMENT_ARCHIVE_FORMAT_VERSION {
+                bail!("unsupported project archive version: {}", archive.version);
+            }
+            let mut document = archive.document;
+            for source in document.sources.values_mut() {
+                let entry_name = format!("{RAW_GDS_DIR}/{}", source.source_key);
+                source.embedded_data = entries
+                    .iter()
+                    .find(|entry| entry.name == entry_name)
+                    .map(|entry| entry.data.clone());
+            }
+            Ok(document)
+        }
+        Some(version) if version == u64::from(ARCHIVE_FORMAT_VERSION) => {
+            let mut document =
+                ProjectDocument::from_legacy_render_objects(read_scene_objects(file_path)?);
+            for source in document.sources.values_mut() {
+                let entry_name = format!("{RAW_GDS_DIR}/{}", source.source_key);
+                source.embedded_data = entries
+                    .iter()
+                    .find(|entry| entry.name == entry_name)
+                    .map(|entry| entry.data.clone());
+            }
+            Ok(document)
+        }
+        Some(version) => bail!("unsupported project archive version: {version}"),
+        None => bail!("project archive is missing a format version"),
+    }
+}
+
 /// Write a `.gds3d` project archive with `scene.json` and embedded GDS sources.
+#[cfg(test)]
 pub fn write_archive(file_path: &Path, objects: &[SceneObject]) -> anyhow::Result<()> {
     let path = normalize_output_path(file_path)?;
     let mut entries = Vec::new();
@@ -58,6 +128,29 @@ pub fn write_archive(file_path: &Path, objects: &[SceneObject]) -> anyhow::Resul
     entries.push(ZipEntry::from_json(SCENE_JSON_NAME, &scene_payload)?);
     write_gds_sources(&mut entries, objects)?;
     write_zip_file(&path, &entries)
+}
+
+fn write_document_sources<'a>(
+    entries: &mut Vec<ZipEntry>,
+    sources: impl Iterator<Item = &'a SourceDocument>,
+) -> anyhow::Result<()> {
+    for source in sources {
+        let data = match fs::read(&source.file_path) {
+            Ok(data) => data,
+            Err(_) => source.embedded_data.clone().ok_or_else(|| {
+                anyhow!("GDS source is unavailable: {}", source.file_path.display())
+            })?,
+        };
+        if data.len() > ZIP_ENTRY_BYTES_MAX {
+            bail!(
+                "GDS source is too large to embed: {}",
+                source.file_path.display()
+            );
+        }
+        let entry_name = format!("{RAW_GDS_DIR}/{}", source.source_key);
+        entries.push(ZipEntry::from_bytes(&entry_name, data)?);
+    }
+    Ok(())
 }
 
 /// Read a `.gds3d` project archive.
@@ -129,6 +222,7 @@ fn normalize_output_path(file_path: &Path) -> anyhow::Result<PathBuf> {
     bail!("project archive requires .gds3d suffix");
 }
 
+#[cfg(test)]
 fn build_scene_payload(objects: &[SceneObject]) -> Map<String, Value> {
     let mut map = Map::new();
     map.insert(
@@ -142,6 +236,7 @@ fn build_scene_payload(objects: &[SceneObject]) -> Map<String, Value> {
     map
 }
 
+#[cfg(test)]
 fn serialize_object(obj: &SceneObject) -> Value {
     let scene_object = serde_json::to_value(obj).unwrap_or(Value::Null);
     let mut payload = Map::new();
@@ -198,6 +293,7 @@ fn serialize_object(obj: &SceneObject) -> Value {
     }
 }
 
+#[cfg(test)]
 fn archive_object_with_scene(
     kind: &str,
     mut payload: Map<String, Value>,
@@ -207,6 +303,7 @@ fn archive_object_with_scene(
     archive_object(kind, payload)
 }
 
+#[cfg(test)]
 fn archive_object(kind: &str, payload: Map<String, Value>) -> Value {
     Value::Object(Map::from_iter([
         ("kind".to_owned(), Value::from(kind)),
@@ -214,6 +311,7 @@ fn archive_object(kind: &str, payload: Map<String, Value>) -> Value {
     ]))
 }
 
+#[cfg(test)]
 fn write_gds_sources(entries: &mut Vec<ZipEntry>, objects: &[SceneObject]) -> anyhow::Result<()> {
     let mut seen = HashMap::<String, ()>::new();
     for obj in objects {
@@ -239,6 +337,7 @@ fn write_gds_sources(entries: &mut Vec<ZipEntry>, objects: &[SceneObject]) -> an
     Ok(())
 }
 
+#[cfg(test)]
 fn file_name(path: &Path) -> String {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -254,6 +353,20 @@ fn safe_archive_name(name: &str) -> bool {
 struct SceneArchive {
     format_version: u32,
     objects: Vec<SceneArchiveObject>,
+}
+
+#[derive(Serialize)]
+struct DocumentArchive<'a> {
+    format: &'static str,
+    version: u32,
+    document: &'a ProjectDocument,
+}
+
+#[derive(Deserialize)]
+struct DocumentArchiveOwned {
+    format: String,
+    version: u32,
+    document: ProjectDocument,
 }
 
 #[derive(Deserialize)]
@@ -501,8 +614,13 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::archive::{read_archive, source_key_for_path, write_archive};
-    use crate::model::{Bounds2d, DisplayProperties, GdsLayerObject, SceneObject};
+    use crate::archive::{
+        read_archive, read_project_document, source_key_for_path, write_archive,
+        write_project_archive,
+    };
+    use crate::model::{
+        Bounds2d, DisplayProperties, GdsLayerObject, ProjectDocument, SceneObject, inspect_gds_file,
+    };
 
     #[test]
     fn source_key_suffix() {
@@ -551,6 +669,56 @@ mod tests {
         );
         assert_eq!(sources.len(), 1);
         assert!(sources.values().next().is_some_and(|data| !data.is_empty()));
+        let migrated = read_project_document(&archive_path).expect("migrate legacy archive");
+        assert_eq!(migrated.cells.len(), 1);
+        assert_eq!(migrated.layer_views.len(), 1);
+        assert!(
+            migrated
+                .sources
+                .values()
+                .all(|source| source.embedded_data.is_some())
+        );
+        fs::remove_dir_all(&temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn document_archive_round_trip() {
+        let temp_dir = std::env::temp_dir().join(format!("gds3d-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let archive_path = temp_dir.join("project.gds3d");
+        let gds_path = Path::new("../models/AWG.gds");
+        let info = inspect_gds_file(gds_path).expect("inspect sample GDS");
+        let selection = info
+            .cells
+            .first()
+            .and_then(|cell| cell.layers.first())
+            .map(|layer| layer.selection.clone())
+            .expect("sample GDS layer selection");
+        let document =
+            ProjectDocument::from_gds(gds_path, &[selection]).expect("import project document");
+        let mut expected_cell_ids = document.cells.keys().copied().collect::<Vec<_>>();
+        expected_cell_ids.sort_by_key(|id| id.0);
+        let mut expected_shape_ids = document.source_map.keys().copied().collect::<Vec<_>>();
+        expected_shape_ids.sort_by_key(|id| id.0);
+
+        write_project_archive(&archive_path, &document).expect("write document archive");
+        let loaded = read_project_document(&archive_path).expect("read document archive");
+
+        let mut loaded_cell_ids = loaded.cells.keys().copied().collect::<Vec<_>>();
+        loaded_cell_ids.sort_by_key(|id| id.0);
+        let mut loaded_shape_ids = loaded.source_map.keys().copied().collect::<Vec<_>>();
+        loaded_shape_ids.sort_by_key(|id| id.0);
+        assert_eq!(loaded_cell_ids, expected_cell_ids);
+        assert_eq!(loaded_shape_ids, expected_shape_ids);
+        assert_eq!(loaded.layer_views.len(), document.layer_views.len());
+        assert_eq!(
+            loaded
+                .compile_render_scene()
+                .expect("compile loaded document")
+                .layers
+                .len(),
+            1
+        );
         fs::remove_dir_all(&temp_dir).expect("remove temp dir");
     }
 }

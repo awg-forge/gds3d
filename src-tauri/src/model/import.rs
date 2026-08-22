@@ -155,6 +155,7 @@ pub fn new_baseplate(name: impl Into<String>, bounds: Bounds2d) -> SceneObject {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::path::{Path, PathBuf};
 
     use super::{
@@ -205,9 +206,18 @@ mod tests {
         );
 
         for cell in document.cells.values() {
+            let mut source_indices = HashSet::new();
             for shape in cell.shapes.values() {
                 assert_eq!(shape.parent_cell, cell.id);
-                assert!(document.source_map.contains_key(&shape.id));
+                let source = document
+                    .source_map
+                    .get(&shape.id)
+                    .expect("shape source map entry");
+                assert_eq!(source.cell_name, cell.name);
+                assert!(
+                    source_indices.insert(source.element_index),
+                    "a GDS element can only map to one imported shape"
+                );
             }
             for instance in cell.instances.values() {
                 assert_eq!(instance.parent_cell, cell.id);
@@ -219,13 +229,30 @@ mod tests {
             .compile_render_scene()
             .expect("compile render scene");
         assert!(!render_scene.layers.is_empty());
-        for layer in render_scene.layers {
+        for layer in &render_scene.layers {
             assert_eq!(layer.object.polygons.len(), layer.occurrences.len());
             assert!(layer.occurrences.iter().all(|occurrence| {
                 document.cells.contains_key(&occurrence.leaf_cell)
                     && document.source_map.contains_key(&occurrence.shape_id)
             }));
+            for occurrence in &layer.occurrences {
+                let inspection = document
+                    .inspect_occurrence(occurrence)
+                    .expect("inspect compiled occurrence");
+                assert_eq!(inspection.shape_id, occurrence.shape_id);
+                assert_eq!(inspection.layer, layer.object.layer);
+                assert_eq!(inspection.datatype, layer.object.datatype);
+            }
         }
+
+        let rebuilt_scene = document
+            .compile_render_scene()
+            .expect("rebuild render scene");
+        assert_eq!(
+            render_scene.objects(),
+            rebuilt_scene.objects(),
+            "rebuilding the disposable render cache must preserve the visible scene"
+        );
     }
 
     #[test]

@@ -28,6 +28,25 @@ export interface GdsFileInfo {
 export interface SceneSnapshot {
   revision: number;
   objects: unknown[];
+  occurrences: RenderObjectOccurrences[];
+}
+export interface Occurrence {
+  root_cell: number;
+  leaf_cell: number;
+  instance_path: number[];
+  shape_id: number;
+}
+export interface RenderObjectOccurrences {
+  objectId: string;
+  occurrences: Occurrence[];
+}
+export interface OccurrenceInspection {
+  cell_name: string;
+  shape_id: number;
+  shape_type: string;
+  layer: number;
+  datatype: number;
+  instance_path: number[];
 }
 export type ViewExportFormat = "png" | "glb" | "stl";
 export type ViewExportQuality = "low" | "standard" | "high" | "ultra";
@@ -51,6 +70,9 @@ export function importGds(path: string, selections: GdsLayerSelection[]): Promis
 }
 export function getSceneSnapshot(): Promise<SceneSnapshot> {
   return invoke("scene_snapshot");
+}
+export function inspectOccurrence(occurrence: Occurrence): Promise<OccurrenceInspection> {
+  return invoke("inspect_occurrence", { occurrence });
 }
 export function clearScene(): Promise<SceneSnapshot> {
   return invoke("clear_scene");

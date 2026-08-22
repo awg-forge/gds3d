@@ -90,6 +90,8 @@
     "sceneAppearsHere": "三维场景会显示在这里",
     "visible": "可见",
     "basic": "基础",
+    "selection": "选择",
+    "shape": "形状",
     "display": "显示",
     "name": "名称",
     "cell": "单元",

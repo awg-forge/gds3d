@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+  import { ArcRotateCameraPointersInput } from "@babylonjs/core/Cameras/Inputs/arcRotateCameraPointersInput";
   import { Color3 } from "@babylonjs/core/Maths/math.color";
   import { Color4 } from "@babylonjs/core/Maths/math.color";
   import { Engine } from "@babylonjs/core/Engines/engine";
@@ -14,18 +15,20 @@
   import { Material } from "@babylonjs/core/Materials/material";
   import { Vector3 } from "@babylonjs/core/Maths/math.vector";
   import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
-  import type { ViewCapture } from "@api/gds";
+  import type { Occurrence, RenderObjectOccurrences, ViewCapture } from "@api/gds";
   import { t } from "@i18n";
   import defaultTheme from "../themes/default";
 
   interface Props {
     objects: unknown[];
+    occurrences?: RenderObjectOccurrences[];
     objectIds: string;
     themeMode: "light" | "dark";
     lightingIntensity: number;
     resetKey: number;
     resizePaused?: boolean;
     onSelect?: (id: string | null) => void;
+    onPick?: (pick: ViewportPick | null) => void;
     onMeshesReady?: (resetKey: number, objectIds: string) => void;
     onMeshesError?: (resetKey: number, reason: unknown) => void;
     onCaptureReady?: (
@@ -54,6 +57,10 @@
     baseDepth: number;
     appearance: LayerAppearance;
   };
+  type ViewportPick = {
+    objectId: string;
+    occurrence: Occurrence | null;
+  };
   type LayerAppearance = {
     color: string;
     opacity: number;
@@ -81,6 +88,11 @@
     positions: Float32Array;
     normals: Float32Array;
     indices: Uint32Array;
+    triangleRanges: {
+      startFaceId: number;
+      endFaceId: number;
+      polygonIndex: number;
+    }[];
   };
   type MeshWorkerResponse =
     | { ok: true; layers: WorkerLayerMesh[] }
@@ -96,12 +108,14 @@
   const cameraResetDuration = 1_500;
   let {
     objects,
+    occurrences = [],
     objectIds,
     themeMode,
     lightingIntensity,
     resetKey,
     resizePaused = false,
     onSelect,
+    onPick,
     onMeshesReady,
     onMeshesError,
     onCaptureReady,
@@ -367,6 +381,9 @@
         .filter((record) => record.payload?.id)
         .map((record) => [record.payload?.id ?? "", record] as const),
     );
+    const occurrencesByObjectId = new Map(
+      occurrences.map((entry) => [entry.objectId, entry.occurrences] as const),
+    );
     const depthsById = new Map(workerLayers.map(({ id, depth }) => [id, depth] as const));
     for (const [layerIndex, layer] of builtLayers.entries()) {
       if (generation !== meshBuildGeneration || !scene) return;
@@ -382,7 +399,11 @@
         continue;
       }
       mesh.material = material;
-      mesh.metadata = { objectId: layer.id };
+      mesh.metadata = {
+        objectId: layer.id,
+        occurrences: occurrencesByObjectId.get(layer.id) ?? [],
+        triangleRanges: layer.triangleRanges,
+      };
       meshes.push(mesh);
       const rendered = {
         mesh,
@@ -686,6 +707,8 @@
       }
     });
     activeCamera.attachControl(false, false, 2);
+    (activeCamera.inputs.attached.pointers as ArcRotateCameraPointersInput).buttons = [1, 2];
+    activeCamera.movement.input.setInteraction("pointer", { button: 1 }, "rotate");
     activeCamera.wheelDeltaPercentage = 0.01;
     activeCamera.panningSensibility = homePanningSensibility;
     activeCamera.lowerRadiusLimit = 0.01;
@@ -710,10 +733,23 @@
     });
     scene.onPointerObservable.add((event) => {
       if (event.type !== PointerEventTypes.POINTERPICK) return;
-      const id = event.pickInfo?.hit
-        ? (event.pickInfo.pickedMesh?.metadata?.objectId as string | undefined)
-        : undefined;
+      const metadata = event.pickInfo?.hit ? event.pickInfo.pickedMesh?.metadata : undefined;
+      const id = metadata?.objectId as string | undefined;
+      const faceId = event.pickInfo?.faceId;
+      const triangleRange =
+        typeof faceId === "number"
+          ? (
+              metadata?.triangleRanges as
+                | { startFaceId: number; endFaceId: number; polygonIndex: number }[]
+                | undefined
+            )?.find((range) => faceId >= range.startFaceId && faceId < range.endFaceId)
+          : undefined;
+      const occurrence = triangleRange
+        ? ((metadata?.occurrences as Occurrence[] | undefined)?.[triangleRange.polygonIndex] ??
+          null)
+        : null;
       onSelect?.(id ?? null);
+      onPick?.(id ? { objectId: id, occurrence } : null);
     });
     renderedResetKey = resetKey;
     void synchronizeObjects(objects, true);
@@ -799,9 +835,6 @@
     block-size: 100%;
     outline: none;
     touch-action: none;
-    cursor: grab;
-  }
-  canvas:active {
-    cursor: grabbing;
+    cursor: default;
   }
 </style>

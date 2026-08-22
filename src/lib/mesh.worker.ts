@@ -20,6 +20,13 @@ type LayerMeshData = {
   positions: Float32Array;
   normals: Float32Array;
   indices: Uint32Array;
+  triangleRanges: TriangleRange[];
+};
+
+type TriangleRange = {
+  startFaceId: number;
+  endFaceId: number;
+  polygonIndex: number;
 };
 
 type MeshResponse = { ok: true; layers: LayerMeshData[] } | { ok: false; message: string };
@@ -55,9 +62,11 @@ function buildLayerMesh(layer: LayerInput): LayerMeshData {
   const positions: number[] = [];
   const normals: number[] = [];
   const indices: number[] = [];
+  const triangleRanges: TriangleRange[] = [];
 
-  for (const polygon of layer.polygons) {
-    appendPolygon(positions, normals, indices, polygon, layer.depth);
+  for (const [polygonIndex, polygon] of layer.polygons.entries()) {
+    const triangleRange = appendPolygon(positions, normals, indices, polygon, layer.depth);
+    if (triangleRange) triangleRanges.push({ ...triangleRange, polygonIndex });
   }
 
   return {
@@ -65,6 +74,7 @@ function buildLayerMesh(layer: LayerInput): LayerMeshData {
     positions: new Float32Array(positions),
     normals: new Float32Array(normals),
     indices: new Uint32Array(indices),
+    triangleRanges,
   };
 }
 
@@ -74,11 +84,11 @@ function appendPolygon(
   indices: number[],
   polygon: PolygonInput,
   depth: number,
-) {
+): Omit<TriangleRange, "polygonIndex"> | null {
   const contours = [polygon.points, ...(polygon.holes ?? [])].filter(
     (contour) => contour.length >= 3,
   );
-  if (contours.length === 0) return;
+  if (contours.length === 0) return null;
 
   const coordinates: number[] = [];
   const holeIndices: number[] = [];
@@ -97,7 +107,9 @@ function appendPolygon(
   }
 
   const triangles = earcut(coordinates, holeIndices, 2);
-  if (triangles.length === 0) return;
+  if (triangles.length === 0) return null;
+
+  const startFaceId = indices.length / 3;
 
   const topOffset = positions.length / 3;
   for (let index = 0; index < coordinates.length; index += 2) {
@@ -154,4 +166,6 @@ function appendPolygon(
       }
     }
   }
+
+  return { startFaceId, endFaceId: indices.length / 3 };
 }

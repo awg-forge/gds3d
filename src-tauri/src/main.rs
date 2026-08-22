@@ -224,6 +224,14 @@ fn handle_window_event(window: &TauriWindow<Wry>, event: &WindowEvent) {
 struct SceneSnapshot {
     revision: u64,
     objects: Vec<model::SceneObject>,
+    occurrences: Vec<RenderObjectOccurrences>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderObjectOccurrences {
+    object_id: String,
+    occurrences: Vec<model::Occurrence>,
 }
 
 #[derive(serde::Deserialize)]
@@ -249,12 +257,20 @@ const MINIMUM_Z_SPAN: f32 = 1.0;
 const Z_SPAN_TOLERANCE: f32 = 0.0001;
 
 fn snapshot(document: &model::ProjectDocument) -> Result<SceneSnapshot, String> {
+    let render_scene = document
+        .compile_render_scene()
+        .map_err(|error| error.to_string())?;
     Ok(SceneSnapshot {
         revision: document.revision(),
-        objects: document
-            .compile_render_scene()
-            .map_err(|error| error.to_string())?
-            .objects(),
+        objects: render_scene.objects(),
+        occurrences: render_scene
+            .layers
+            .into_iter()
+            .map(|layer| RenderObjectOccurrences {
+                object_id: layer.object.id,
+                occurrences: layer.occurrences,
+            })
+            .collect(),
     })
 }
 
@@ -297,6 +313,20 @@ fn scene_snapshot(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, 
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
     snapshot(&scene)
+}
+
+#[tauri::command]
+fn inspect_occurrence(
+    occurrence: model::Occurrence,
+    state: tauri::State<'_, SceneState>,
+) -> Result<model::OccurrenceInspection, String> {
+    let scene = state
+        .0
+        .lock()
+        .map_err(|_| "scene state is unavailable".to_owned())?;
+    scene
+        .inspect_occurrence(&occurrence)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -504,6 +534,7 @@ fn main() {
             inspect_gds_file,
             import_gds,
             scene_snapshot,
+            inspect_occurrence,
             clear_scene,
             update_object_display,
             set_objects_visibility,

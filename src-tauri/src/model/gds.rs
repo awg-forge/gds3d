@@ -36,8 +36,10 @@ pub(super) fn parse_gds_layers(path: &Path) -> anyhow::Result<ParsedGdsLayers> {
                 let Some(cell) = cells.get_mut(cell_name) else {
                     continue;
                 };
+                let element_index = cell.next_element_index();
                 add_cell_shape(
                     cell,
+                    element_index,
                     boundary.layer,
                     boundary.datatype,
                     polygon_from_points(GdsPoint::iter_xy(boundary.xy.as_ref()), coordinate_scale)
@@ -52,8 +54,10 @@ pub(super) fn parse_gds_layers(path: &Path) -> anyhow::Result<ParsedGdsLayers> {
                 let Some(cell) = cells.get_mut(cell_name) else {
                     continue;
                 };
+                let element_index = cell.next_element_index();
                 add_cell_shape(
                     cell,
+                    element_index,
                     path.layer,
                     path.datatype,
                     path_shape_from_gds(&path, coordinate_scale).map(ShapeKind::Path),
@@ -67,8 +71,10 @@ pub(super) fn parse_gds_layers(path: &Path) -> anyhow::Result<ParsedGdsLayers> {
                 let Some(cell) = cells.get_mut(cell_name) else {
                     continue;
                 };
+                let element_index = cell.next_element_index();
                 add_cell_shape(
                     cell,
+                    element_index,
                     box_.layer,
                     box_.boxtype,
                     polygon_from_points(GdsPoint::iter_xy(box_.xy.as_ref()), coordinate_scale)
@@ -83,6 +89,7 @@ pub(super) fn parse_gds_layers(path: &Path) -> anyhow::Result<ParsedGdsLayers> {
                 let Some(cell) = cells.get_mut(cell_name) else {
                     continue;
                 };
+                cell.next_element_index();
                 referenced_cells.insert(sref.sname.to_owned());
                 if let Some(reference) = CellReference::from_sref(&sref, coordinate_scale) {
                     cell.references.push(reference);
@@ -95,12 +102,20 @@ pub(super) fn parse_gds_layers(path: &Path) -> anyhow::Result<ParsedGdsLayers> {
                 let Some(cell) = cells.get_mut(cell_name) else {
                     continue;
                 };
+                cell.next_element_index();
                 referenced_cells.insert(aref.sname.to_owned());
                 if let Some(reference) = CellReference::from_aref(&aref, coordinate_scale) {
                     cell.references.push(reference);
                 }
             }
-            GdsEvent::Element(_) | GdsEvent::Property(_) | GdsEvent::LibraryEnd => {}
+            GdsEvent::Element(_) => {
+                if let Some(cell_name) = current_cell.as_ref()
+                    && let Some(cell) = cells.get_mut(cell_name)
+                {
+                    cell.next_element_index();
+                }
+            }
+            GdsEvent::Property(_) | GdsEvent::LibraryEnd => {}
         }
     }
 
@@ -131,6 +146,7 @@ pub(super) struct LayerGeometry {
 pub(super) struct ParsedGdsCell {
     pub(super) shapes: Vec<ParsedShape>,
     pub(super) references: Vec<CellReference>,
+    element_count: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -139,9 +155,19 @@ pub(super) struct ParsedShape {
     pub(super) datatype: i32,
     pub(super) geometry: ShapeKind,
     pub(super) element_kind: GdsElementKind,
+    pub(super) element_index: u64,
 }
 
 impl ParsedGdsCell {
+    fn next_element_index(&mut self) -> u64 {
+        let element_index = self.element_count;
+        self.element_count = self
+            .element_count
+            .checked_add(1)
+            .expect("GDS cell element count exceeds u64");
+        element_index
+    }
+
     fn is_empty(&self) -> bool {
         self.shapes.is_empty() && self.references.is_empty()
     }
@@ -301,6 +327,7 @@ impl CellReference {
 
 fn add_cell_shape(
     cell: &mut ParsedGdsCell,
+    element_index: u64,
     layer: i16,
     datatype: i16,
     geometry: Option<ShapeKind>,
@@ -314,6 +341,7 @@ fn add_cell_shape(
         datatype: i32::from(datatype),
         geometry,
         element_kind,
+        element_index,
     });
 }
 

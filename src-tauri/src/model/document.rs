@@ -90,7 +90,7 @@ impl ProjectDocument {
                 continue;
             };
             let mut shapes = IndexMap::new();
-            for (element_index, parsed_shape) in parsed_cell.shapes.iter().enumerate() {
+            for parsed_shape in &parsed_cell.shapes {
                 let shape_id = ShapeId(self.id_allocator.allocate());
                 shapes.insert(
                     shape_id,
@@ -107,8 +107,7 @@ impl ProjectDocument {
                     SourceMapEntry {
                         source_id,
                         cell_name: name.clone(),
-                        element_index: u64::try_from(element_index)
-                            .expect("GDS element index exceeds u64"),
+                        element_index: parsed_shape.element_index,
                         element_kind: parsed_shape.element_kind,
                     },
                 );
@@ -382,6 +381,48 @@ impl ProjectDocument {
 
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    pub fn inspect_occurrence(
+        &self,
+        occurrence: &Occurrence,
+    ) -> anyhow::Result<OccurrenceInspection> {
+        let mut current_cell = occurrence.root_cell;
+        self.cell(current_cell)?;
+        for instance_id in &occurrence.instance_path {
+            let instance = self
+                .cell(current_cell)?
+                .instances
+                .get(instance_id)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("document instance {} is unavailable", instance_id.0)
+                })?;
+            current_cell = instance.cell_id;
+        }
+        if current_cell != occurrence.leaf_cell {
+            anyhow::bail!("occurrence instance path does not resolve to its leaf cell");
+        }
+
+        let cell = self.cell(occurrence.leaf_cell)?;
+        let shape = cell.shapes.get(&occurrence.shape_id).ok_or_else(|| {
+            anyhow::anyhow!("document shape {} is unavailable", occurrence.shape_id.0)
+        })?;
+        if shape.parent_cell != cell.id {
+            anyhow::bail!("document shape ownership is inconsistent");
+        }
+        let shape_type = match &shape.geometry {
+            ShapeKind::Boundary(_) => "Boundary",
+            ShapeKind::Path(_) => "Path",
+            ShapeKind::Rectangle(_) => "Rectangle",
+        };
+        Ok(OccurrenceInspection {
+            cell_name: cell.name.clone(),
+            shape_id: shape.id,
+            shape_type: shape_type.to_owned(),
+            layer: shape.layer,
+            datatype: shape.datatype,
+            instance_path: occurrence.instance_path.clone(),
+        })
     }
 
     pub fn touch(&mut self) {

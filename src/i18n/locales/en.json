@@ -90,6 +90,8 @@
     "sceneAppearsHere": "Its 3D scene will appear here",
     "visible": "Visible",
     "basic": "Basic",
+    "selection": "Selection",
+    "shape": "Shape",
     "display": "Display",
     "name": "Name",
     "cell": "Cell",

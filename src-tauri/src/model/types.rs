@@ -151,6 +151,16 @@ pub struct Occurrence {
     pub shape_id: ShapeId,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct OccurrenceInspection {
+    pub cell_name: String,
+    pub shape_id: ShapeId,
+    pub shape_type: String,
+    pub layer: i32,
+    pub datatype: i32,
+    pub instance_path: Vec<InstanceId>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdAllocator {
     next: u64,

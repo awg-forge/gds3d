@@ -16,10 +16,13 @@
     saveProject,
     exportView,
     exportModel,
+    inspectOccurrence,
     setObjectsVisibility,
     updateObjectDisplay,
     type GdsFileInfo,
     type GdsLayerSelection,
+    type Occurrence,
+    type OccurrenceInspection,
     type SceneSnapshot,
     type ViewCapture,
     type ViewExportSettings,
@@ -117,6 +120,8 @@
   let scene = $state<SceneSnapshot | null>(null);
   let sceneRevision = $state(0);
   let selectedId = $state<string | null>(null);
+  let selectedOccurrence = $state<OccurrenceInspection | null>(null);
+  let occurrenceRequest = 0;
   let busy = $state(false);
   let importCandidate = $state<GdsFileInfo | null>(null);
   let collapsedGroups = $state<string[]>([]);
@@ -200,6 +205,21 @@
 
   function errorMessage(reason: unknown): string {
     return reason instanceof Error ? reason.message : String(reason);
+  }
+
+  async function inspectViewportPick(
+    pick: { objectId: string; occurrence: Occurrence | null } | null,
+  ) {
+    selectedId = pick?.objectId ?? null;
+    selectedOccurrence = null;
+    const request = ++occurrenceRequest;
+    if (!pick?.occurrence) return;
+    try {
+      const inspection = await inspectOccurrence(pick.occurrence);
+      if (request === occurrenceRequest) selectedOccurrence = inspection;
+    } catch (reason) {
+      if (request === occurrenceRequest) showToast(errorMessage(reason), "error");
+    }
   }
 
   function waitForViewportMeshes(resetKey: number, objectIds: string): Promise<void> {
@@ -827,12 +847,14 @@
     <section class="viewport-panel">
       {#if scene}<Viewport
           objects={scene.objects}
+          occurrences={scene.occurrences}
           objectIds={viewportObjectIds}
           {themeMode}
           {lightingIntensity}
           resetKey={sceneRevision}
           resizePaused={resizingPanel !== null || !active}
           onSelect={(id) => (selectedId = id)}
+          onPick={inspectViewportPick}
           onMeshesReady={handleViewportMeshesReady}
           onMeshesError={handleViewportMeshesError}
           onCaptureReady={(capture) => (captureViewport = capture)}
@@ -876,6 +898,24 @@
               <span>{t("gds.datatype")}</span><strong>{selected.payload?.datatype ?? "—"}</strong>
             </div>
           </section>
+
+          {#if selectedOccurrence}<section class="property-section">
+              <h3>{t("gds.selection")}</h3>
+              <div class="property-field readonly">
+                <span>{t("gds.cell")}</span><strong>{selectedOccurrence.cell_name}</strong>
+              </div>
+              <div class="property-field readonly">
+                <span>{t("gds.shape")}</span><strong
+                  >{selectedOccurrence.shape_type} #{selectedOccurrence.shape_id}</strong
+                >
+              </div>
+              <div class="property-field readonly">
+                <span>{t("gds.layer")}</span><strong
+                  >L{selectedOccurrence.layer}/D{selectedOccurrence.datatype}</strong
+                >
+              </div>
+            </section>
+          {/if}
 
           <section class="property-section">
             <h3>{t("gds.display")}</h3>

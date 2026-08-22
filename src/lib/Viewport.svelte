@@ -4,17 +4,19 @@
   import { ArcRotateCameraPointersInput } from "@babylonjs/core/Cameras/Inputs/arcRotateCameraPointersInput";
   import { Color3 } from "@babylonjs/core/Maths/math.color";
   import { Color4 } from "@babylonjs/core/Maths/math.color";
+  // oxlint-disable-next-line import/no-unassigned-import -- Babylon registers scene picking through this module.
+  import "@babylonjs/core/Culling/ray";
   import { Engine } from "@babylonjs/core/Engines/engine";
   import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
   import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
   import { Mesh } from "@babylonjs/core/Meshes/mesh";
+  import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
   import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
   import { Scene } from "@babylonjs/core/scene";
   import { CreateScreenshotUsingRenderTarget } from "@babylonjs/core/Misc/screenshotTools";
   import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
   import { Material } from "@babylonjs/core/Materials/material";
   import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-  import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
   import type { Occurrence, RenderObjectOccurrences, ViewCapture } from "@api/gds";
   import { t } from "@i18n";
   import defaultTheme from "../themes/default";
@@ -27,7 +29,6 @@
     lightingIntensity: number;
     resetKey: number;
     resizePaused?: boolean;
-    onSelect?: (id: string | null) => void;
     onPick?: (pick: ViewportPick | null) => void;
     onMeshesReady?: (resetKey: number, objectIds: string) => void;
     onMeshesError?: (resetKey: number, reason: unknown) => void;
@@ -114,7 +115,6 @@
     lightingIntensity,
     resetKey,
     resizePaused = false,
-    onSelect,
     onPick,
     onMeshesReady,
     onMeshesError,
@@ -128,6 +128,7 @@
   let renderedLayers = new Map<string, RenderedLayer>();
   let renderedObjectIds = "";
   let renderedResetKey = -1;
+  let selectionPointerStart: { x: number; y: number } | null = null;
   let homeCameraState: CameraState = {
     target: Vector3.Zero(),
     alpha: homeAlpha,
@@ -252,6 +253,25 @@
       zMax: update.z_max ?? rendered.appearance.zMax,
     };
     applyLayerAppearance(rendered);
+  }
+
+  function reportPickedMesh(mesh: AbstractMesh | null, faceId: number | undefined) {
+    const metadata = mesh?.metadata;
+    const id = metadata?.objectId as string | undefined;
+    if (!id) return;
+
+    const triangleRange =
+      typeof faceId === "number"
+        ? (
+            metadata?.triangleRanges as
+              | { startFaceId: number; endFaceId: number; polygonIndex: number }[]
+              | undefined
+          )?.find((range) => faceId >= range.startFaceId && faceId < range.endFaceId)
+        : undefined;
+    const occurrence = triangleRange
+      ? ((metadata?.occurrences as Occurrence[] | undefined)?.[triangleRange.polygonIndex] ?? null)
+      : null;
+    onPick?.({ objectId: id, occurrence });
   }
 
   function cancelActiveMeshBuild() {
@@ -399,6 +419,8 @@
         continue;
       }
       mesh.material = material;
+      mesh.isPickable = true;
+      mesh.alwaysSelectAsActiveMesh = true;
       mesh.metadata = {
         objectId: layer.id,
         occurrences: occurrencesByObjectId.get(layer.id) ?? [],
@@ -706,9 +728,17 @@
         for (const clone of clones) clone.dispose(false, false);
       }
     });
-    activeCamera.attachControl(false, false, 2);
-    (activeCamera.inputs.attached.pointers as ArcRotateCameraPointersInput).buttons = [1, 2];
+    activeCamera.inputs.removeByType("ArcRotateCameraPointersInput");
+    const pointerInput = new ArcRotateCameraPointersInput();
+    pointerInput.buttons = [1];
+    activeCamera.inputs.add(pointerInput);
+    activeCamera.attachControl(false, false, -1);
     activeCamera.movement.input.setInteraction("pointer", { button: 1 }, "rotate");
+    activeCamera.movement.input.setInteraction(
+      "pointer",
+      { button: 1, modifiers: { shift: true } },
+      "pan",
+    );
     activeCamera.wheelDeltaPercentage = 0.01;
     activeCamera.panningSensibility = homePanningSensibility;
     activeCamera.lowerRadiusLimit = 0.01;
@@ -716,6 +746,29 @@
     viewportCanvas.addEventListener("contextmenu", preventContextMenu);
     viewportCanvas.addEventListener("wheel", preventPageZoom, { passive: false });
     viewportCanvas.addEventListener("pointerdown", stopCameraAnimation);
+    const startSelection = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      selectionPointerStart = { x: event.clientX, y: event.clientY };
+    };
+    const finishSelection = (event: PointerEvent) => {
+      if (event.button !== 0 || !selectionPointerStart) return;
+      const movement = Math.hypot(
+        event.clientX - selectionPointerStart.x,
+        event.clientY - selectionPointerStart.y,
+      );
+      selectionPointerStart = null;
+      if (movement > 4) return;
+
+      const bounds = viewportCanvas.getBoundingClientRect();
+      const pick = activeScene.pick(
+        event.clientX - bounds.left,
+        event.clientY - bounds.top,
+        (mesh) => Boolean(mesh.metadata?.objectId),
+      );
+      if (pick.hit) reportPickedMesh(pick.pickedMesh ?? null, pick.faceId);
+    };
+    viewportCanvas.addEventListener("pointerdown", startSelection);
+    viewportCanvas.addEventListener("pointerup", finishSelection);
     window.addEventListener("gds3d-reset-camera", animateCameraHome);
     window.addEventListener("gds3d-viewport-display", updateLayerAppearanceFromEvent);
     configureLighting();
@@ -730,26 +783,6 @@
           .subtractInPlace(activeCamera.position)
           .normalize();
       }
-    });
-    scene.onPointerObservable.add((event) => {
-      if (event.type !== PointerEventTypes.POINTERPICK) return;
-      const metadata = event.pickInfo?.hit ? event.pickInfo.pickedMesh?.metadata : undefined;
-      const id = metadata?.objectId as string | undefined;
-      const faceId = event.pickInfo?.faceId;
-      const triangleRange =
-        typeof faceId === "number"
-          ? (
-              metadata?.triangleRanges as
-                | { startFaceId: number; endFaceId: number; polygonIndex: number }[]
-                | undefined
-            )?.find((range) => faceId >= range.startFaceId && faceId < range.endFaceId)
-          : undefined;
-      const occurrence = triangleRange
-        ? ((metadata?.occurrences as Occurrence[] | undefined)?.[triangleRange.polygonIndex] ??
-          null)
-        : null;
-      onSelect?.(id ?? null);
-      onPick?.(id ? { objectId: id, occurrence } : null);
     });
     renderedResetKey = resetKey;
     void synchronizeObjects(objects, true);
@@ -776,6 +809,8 @@
       viewportCanvas.removeEventListener("contextmenu", preventContextMenu);
       viewportCanvas.removeEventListener("wheel", preventPageZoom);
       viewportCanvas.removeEventListener("pointerdown", stopCameraAnimation);
+      viewportCanvas.removeEventListener("pointerdown", startSelection);
+      viewportCanvas.removeEventListener("pointerup", finishSelection);
       resizeObserver.disconnect();
       scene?.onBeforeRenderObservable.remove(panningObserver);
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);

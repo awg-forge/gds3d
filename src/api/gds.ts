@@ -47,6 +47,7 @@ export interface OccurrenceInspection {
   layer: number;
   datatype: number;
   instance_path: number[];
+  hierarchy_path: string[];
 }
 export type ViewExportFormat = "png" | "glb" | "stl";
 export type ViewExportQuality = "low" | "standard" | "high" | "ultra";

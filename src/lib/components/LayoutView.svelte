@@ -207,16 +207,35 @@
     return reason instanceof Error ? reason.message : String(reason);
   }
 
+  function shapeTypeLabel(shapeType: string): string {
+    const translationKey =
+      {
+        Boundary: "gds.shapeTypes.boundary",
+        Path: "gds.shapeTypes.path",
+        Rectangle: "gds.shapeTypes.rectangle",
+      }[shapeType] ?? null;
+    return translationKey ? t(translationKey) : shapeType;
+  }
+
+  function selectSceneObject(objectId: string | null) {
+    void inspectViewportPick(objectId ? { objectId, occurrence: null } : null);
+  }
+
   async function inspectViewportPick(
     pick: { objectId: string; occurrence: Occurrence | null } | null,
   ) {
-    selectedId = pick?.objectId ?? null;
-    selectedOccurrence = null;
     const request = ++occurrenceRequest;
-    if (!pick?.occurrence) return;
+    if (!pick?.occurrence) {
+      selectedId = pick?.objectId ?? null;
+      selectedOccurrence = null;
+      return;
+    }
     try {
       const inspection = await inspectOccurrence(pick.occurrence);
-      if (request === occurrenceRequest) selectedOccurrence = inspection;
+      if (request === occurrenceRequest) {
+        selectedId = pick.objectId;
+        selectedOccurrence = inspection;
+      }
     } catch (reason) {
       if (request === occurrenceRequest) showToast(errorMessage(reason), "error");
     }
@@ -401,7 +420,7 @@
             Boolean(entry.payload?.id) &&
             !existingIds.has(entry.payload?.id),
         );
-      selectedId = addedBaseplate?.payload?.id ?? selectedId;
+      selectSceneObject(addedBaseplate?.payload?.id ?? selectedId);
     });
   }
 
@@ -410,7 +429,7 @@
     void run(async () => {
       const updatedScene = await deleteSceneObject(objectId);
       scene = updatedScene;
-      selectedId = firstLayerId(updatedScene);
+      selectSceneObject(firstLayerId(updatedScene));
     });
   }
 
@@ -548,7 +567,7 @@
       async () => {
         const importedScene = await importGds(candidate.file_path, selections);
         scene = importedScene;
-        selectedId = firstLayerId(importedScene);
+        selectSceneObject(firstLayerId(importedScene));
         sceneRevision += 1;
         const meshesReady = waitForViewportMeshes(sceneRevision, snapshotObjectIds(importedScene));
         await tick();
@@ -756,7 +775,7 @@
                       tabindex="-1"
                       aria-selected={id === selectedId}
                       oncontextmenu={(event) => {
-                        selectedId = id;
+                        selectSceneObject(id);
                         openContextMenu(event, {
                           kind: "object",
                           x: event.clientX,
@@ -770,7 +789,7 @@
                         class="object-button"
                         variant="ghost"
                         size="sm"
-                        onclick={() => (selectedId = id)}
+                        onclick={() => selectSceneObject(id)}
                         >{entry.payload?.display?.name ?? t("gds.layer")}</Button
                       ><button
                         class:visible
@@ -795,7 +814,7 @@
                 tabindex="-1"
                 aria-selected={id === selectedId}
                 oncontextmenu={(event) => {
-                  selectedId = id;
+                  selectSceneObject(id);
                   openContextMenu(event, {
                     kind: "object",
                     x: event.clientX,
@@ -808,7 +827,7 @@
                   class="object-button"
                   variant="ghost"
                   size="sm"
-                  onclick={() => (selectedId = id)}
+                  onclick={() => selectSceneObject(id)}
                   >{entry.payload?.display?.name ?? t("gds.baseplate")}</Button
                 ><button
                   class:visible={entry.payload?.display?.visible ?? true}
@@ -853,7 +872,6 @@
           {lightingIntensity}
           resetKey={sceneRevision}
           resizePaused={resizingPanel !== null || !active}
-          onSelect={(id) => (selectedId = id)}
           onPick={inspectViewportPick}
           onMeshesReady={handleViewportMeshesReady}
           onMeshesError={handleViewportMeshesError}
@@ -888,34 +906,42 @@
         <div class="property-grid">
           <section class="property-section">
             <h3>{t("gds.basic")}</h3>
-            <div class="property-field readonly">
-              <span>{t("gds.cell")}</span><strong>{selected.payload?.cell_name ?? "—"}</strong>
-            </div>
-            <div class="property-field readonly">
-              <span>{t("gds.layerNumber")}</span><strong>{selected.payload?.layer ?? "—"}</strong>
-            </div>
-            <div class="property-field readonly">
-              <span>{t("gds.datatype")}</span><strong>{selected.payload?.datatype ?? "—"}</strong>
-            </div>
-          </section>
-
-          {#if selectedOccurrence}<section class="property-section">
-              <h3>{t("gds.selection")}</h3>
-              <div class="property-field readonly">
-                <span>{t("gds.cell")}</span><strong>{selectedOccurrence.cell_name}</strong>
+            {#if selected.kind === "Baseplate"}
+              <div class="property-field readonly property-type">
+                <span>{t("gds.objectType")}</span><strong>{t("gds.baseplate")}</strong>
+              </div>
+            {:else if selectedOccurrence}
+              <div class="property-field readonly property-type">
+                <span>{t("gds.objectType")}</span><strong
+                  >{shapeTypeLabel(selectedOccurrence.shape_type)}</strong
+                >
               </div>
               <div class="property-field readonly">
-                <span>{t("gds.shape")}</span><strong
-                  >{selectedOccurrence.shape_type} #{selectedOccurrence.shape_id}</strong
-                >
+                <span>{t("gds.cell")}</span><strong>{selectedOccurrence.cell_name}</strong>
               </div>
               <div class="property-field readonly">
                 <span>{t("gds.layer")}</span><strong
                   >L{selectedOccurrence.layer}/D{selectedOccurrence.datatype}</strong
                 >
               </div>
-            </section>
-          {/if}
+              {#if selectedOccurrence.hierarchy_path.length > 1}
+                <div class="property-field readonly">
+                  <span>{t("gds.hierarchy")}</span><strong
+                    >{selectedOccurrence.hierarchy_path.join(" / ")}</strong
+                  >
+                </div>
+              {/if}
+            {:else}
+              <div class="property-field readonly">
+                <span>{t("gds.cell")}</span><strong>{selected.payload?.cell_name ?? "—"}</strong>
+              </div>
+              <div class="property-field readonly">
+                <span>{t("gds.layer")}</span><strong
+                  >L{selected.payload?.layer ?? "—"}/D{selected.payload?.datatype ?? "—"}</strong
+                >
+              </div>
+            {/if}
+          </section>
 
           <section class="property-section">
             <h3>{t("gds.display")}</h3>
@@ -1398,6 +1424,7 @@
     border-top: 1px solid var(--border);
   }
   .property-section h3 {
+    order: -2;
     margin: 0 0 3px;
     color: var(--text);
     font-size: 0.82rem;
@@ -1412,6 +1439,9 @@
     min-height: 30px;
     color: var(--muted);
     font-size: 0.84rem;
+  }
+  .property-field.property-type {
+    order: -1;
   }
   .property-field > label,
   .property-field > span {

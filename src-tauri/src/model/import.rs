@@ -242,6 +242,11 @@ mod tests {
                 assert_eq!(inspection.shape_id, occurrence.shape_id);
                 assert_eq!(inspection.layer, layer.object.layer);
                 assert_eq!(inspection.datatype, layer.object.datatype);
+                assert_eq!(
+                    inspection.hierarchy_path.last(),
+                    Some(&inspection.cell_name),
+                    "hierarchy path must end at the shape-owning cell"
+                );
             }
         }
 

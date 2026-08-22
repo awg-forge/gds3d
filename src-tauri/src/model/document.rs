@@ -388,7 +388,7 @@ impl ProjectDocument {
         occurrence: &Occurrence,
     ) -> anyhow::Result<OccurrenceInspection> {
         let mut current_cell = occurrence.root_cell;
-        self.cell(current_cell)?;
+        let mut hierarchy_path = vec![self.cell(current_cell)?.name.clone()];
         for instance_id in &occurrence.instance_path {
             let instance = self
                 .cell(current_cell)?
@@ -398,6 +398,7 @@ impl ProjectDocument {
                     anyhow::anyhow!("document instance {} is unavailable", instance_id.0)
                 })?;
             current_cell = instance.cell_id;
+            hierarchy_path.push(self.cell(current_cell)?.name.clone());
         }
         if current_cell != occurrence.leaf_cell {
             anyhow::bail!("occurrence instance path does not resolve to its leaf cell");
@@ -422,6 +423,7 @@ impl ProjectDocument {
             layer: shape.layer,
             datatype: shape.datatype,
             instance_path: occurrence.instance_path.clone(),
+            hierarchy_path,
         })
     }
 

@@ -159,6 +159,7 @@ pub struct OccurrenceInspection {
     pub layer: i32,
     pub datatype: i32,
     pub instance_path: Vec<InstanceId>,
+    pub hierarchy_path: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

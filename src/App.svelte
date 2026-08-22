@@ -18,6 +18,7 @@
   import AboutDialog from "./lib/components/AboutDialog.svelte";
   import LayoutView from "./lib/components/LayoutView.svelte";
   import SettingsView from "./lib/components/SettingsView.svelte";
+  import ShortcutsDialog from "./lib/components/ShortcutsDialog.svelte";
   import SplashScreen from "./lib/components/SplashScreen.svelte";
   import Toast from "./lib/components/ui/Toast.svelte";
 
@@ -31,6 +32,7 @@
   let lightingIntensity = $state(readLightingIntensity());
   let maximized = $state(false);
   let aboutOpen = $state(false);
+  let shortcutsOpen = $state(false);
   let splashVisible = $state(shouldShowSplash());
   let isMac = $state(false);
   let shortcutModifier = $state("Ctrl");
@@ -232,6 +234,11 @@
     aboutOpen = true;
   }
 
+  function openShortcuts() {
+    openMenu = null;
+    shortcutsOpen = true;
+  }
+
   function handleTitlebarMouseDown(event: MouseEvent) {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
@@ -343,6 +350,8 @@
           >
           {#if openMenu === "help"}
             <div class="app-menu" role="menu">
+              <button role="menuitem" onclick={openShortcuts}>{t("gds.shortcuts")}</button>
+              <div class="menu-separator"></div>
               <button role="menuitem" onclick={openAbout}>{t("gds.about")}</button>
             </div>
           {/if}
@@ -436,6 +445,7 @@
   </main>
 </div>
 
+<ShortcutsDialog bind:open={shortcutsOpen} />
 <AboutDialog bind:open={aboutOpen} />
 <Toast />
 {#if splashVisible}<SplashScreen onready={() => (splashVisible = false)} />{/if}

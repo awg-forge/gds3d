@@ -104,8 +104,10 @@
     beta: number;
     radius: number;
   };
+  type CameraView = "top" | "front" | "left" | "right" | "back" | "bottom";
   const homeAlpha = -Math.PI / 2;
   const homeBeta = Math.PI / 3;
+  const cameraPoleMargin = 0.01;
   const cameraResetDuration = 1_500;
   let {
     objects,
@@ -523,20 +525,20 @@
     return mirrored ? 1 - eased : eased;
   }
 
-  function animateCameraHome() {
+  function animateCameraTo(endState: CameraState, preferPositiveHalfTurn = false) {
     if (!camera) return;
     stopCameraAnimation();
     resetCameraInertia();
     const activeCamera = camera;
     const startTarget = activeCamera.target.clone();
-    const endState: CameraState = {
-      ...homeCameraState,
-      target: homeCameraState.target.clone(),
-    };
     const startAlpha = activeCamera.alpha;
     const startBeta = activeCamera.beta;
     const startRadius = activeCamera.radius;
-    const alphaDelta = shortestAngleDelta(startAlpha, endState.alpha);
+    const shortestAlphaDelta = shortestAngleDelta(startAlpha, endState.alpha);
+    const alphaDelta =
+      preferPositiveHalfTurn && Math.abs(Math.abs(shortestAlphaDelta) - Math.PI) < 0.0001
+        ? Math.PI
+        : shortestAlphaDelta;
     const startedAt = performance.now();
 
     const animate = (now: number) => {
@@ -563,6 +565,34 @@
     };
 
     cameraAnimationFrame = requestAnimationFrame(animate);
+  }
+
+  function cameraViewState(view: CameraView): CameraState {
+    const direction = {
+      top: { alpha: homeAlpha, beta: cameraPoleMargin },
+      front: { alpha: -Math.PI / 2, beta: Math.PI / 2 },
+      left: { alpha: Math.PI, beta: Math.PI / 2 },
+      right: { alpha: 0, beta: Math.PI / 2 },
+      back: { alpha: Math.PI / 2, beta: Math.PI / 2 },
+      bottom: { alpha: homeAlpha + Math.PI, beta: Math.PI - cameraPoleMargin },
+    }[view];
+    return {
+      target: homeCameraState.target.clone(),
+      alpha: direction.alpha,
+      beta: direction.beta,
+      radius: homeCameraState.radius,
+    };
+  }
+
+  function animateCameraHome(event: Event) {
+    const view = (event as CustomEvent<CameraView | undefined>).detail;
+    const endState = view
+      ? cameraViewState(view)
+      : {
+          ...homeCameraState,
+          target: homeCameraState.target.clone(),
+        };
+    animateCameraTo(endState, view === "bottom");
   }
 
   function blobDataUrl(blob: Blob): Promise<string> {

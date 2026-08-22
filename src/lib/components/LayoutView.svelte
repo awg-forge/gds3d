@@ -584,6 +584,24 @@
         case "resetCamera":
           resetCamera();
           break;
+        case "viewTop":
+          setCameraView("top");
+          break;
+        case "viewFront":
+          setCameraView("front");
+          break;
+        case "viewLeft":
+          setCameraView("left");
+          break;
+        case "viewRight":
+          setCameraView("right");
+          break;
+        case "viewBack":
+          setCameraView("back");
+          break;
+        case "viewBottom":
+          setCameraView("bottom");
+          break;
         case "createBaseplate":
           addBaseplate();
           break;
@@ -811,6 +829,10 @@
 
   function resetCamera() {
     window.dispatchEvent(new CustomEvent("gds3d-reset-camera"));
+  }
+
+  function setCameraView(view: "top" | "front" | "left" | "right" | "back" | "bottom") {
+    window.dispatchEvent(new CustomEvent("gds3d-reset-camera", { detail: view }));
   }
 </script>
 

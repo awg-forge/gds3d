@@ -73,7 +73,13 @@
     | "redo"
     | "renameSelected"
     | "deleteSelected"
-    | "resetCamera";
+    | "resetCamera"
+    | "viewTop"
+    | "viewFront"
+    | "viewLeft"
+    | "viewRight"
+    | "viewBack"
+    | "viewBottom";
   type MenuId = "file" | "edit" | "view" | "help";
   let openMenu = $state<MenuId | null>(null);
 
@@ -243,7 +249,23 @@
     let action: LayoutAction | null = null;
 
     if (primaryModifier) {
-      if (key === "o") action = event.shiftKey ? "openProject" : "openGds";
+      const target = event.target as HTMLElement | null;
+      const viewActions: Record<string, LayoutAction> = {
+        "1": "viewTop",
+        "2": "viewFront",
+        "3": "viewLeft",
+        "4": "viewRight",
+        "5": "viewBack",
+        "6": "viewBottom",
+      };
+      if (
+        !event.shiftKey &&
+        activeView === "layout" &&
+        !target?.closest("input, textarea, select, [contenteditable='true']") &&
+        viewActions[key]
+      ) {
+        action = viewActions[key];
+      } else if (key === "o") action = event.shiftKey ? "openProject" : "openGds";
       else if (key === "s") action = event.shiftKey ? "saveAs" : "saveProject";
       else if (!event.shiftKey && key === "n") action = "createBaseplate";
       else if (!event.shiftKey && key === "f") action = "resetCamera";
@@ -408,6 +430,25 @@
             <div class="app-menu" role="menu">
               <button role="menuitem" onclick={() => requestLayoutAction("resetCamera")}
                 ><span>{t("gds.resetCamera")}</span><kbd>{shortcutLabel("F")}</kbd></button
+              >
+              <div class="menu-separator"></div>
+              <button role="menuitem" onclick={() => requestLayoutAction("viewTop")}
+                ><span>{t("gds.viewTop")}</span><kbd>{shortcutLabel("1")}</kbd></button
+              >
+              <button role="menuitem" onclick={() => requestLayoutAction("viewFront")}
+                ><span>{t("gds.viewFront")}</span><kbd>{shortcutLabel("2")}</kbd></button
+              >
+              <button role="menuitem" onclick={() => requestLayoutAction("viewLeft")}
+                ><span>{t("gds.viewLeft")}</span><kbd>{shortcutLabel("3")}</kbd></button
+              >
+              <button role="menuitem" onclick={() => requestLayoutAction("viewRight")}
+                ><span>{t("gds.viewRight")}</span><kbd>{shortcutLabel("4")}</kbd></button
+              >
+              <button role="menuitem" onclick={() => requestLayoutAction("viewBack")}
+                ><span>{t("gds.viewBack")}</span><kbd>{shortcutLabel("5")}</kbd></button
+              >
+              <button role="menuitem" onclick={() => requestLayoutAction("viewBottom")}
+                ><span>{t("gds.viewBottom")}</span><kbd>{shortcutLabel("6")}</kbd></button
               >
             </div>
           {/if}

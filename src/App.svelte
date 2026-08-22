@@ -10,6 +10,7 @@
     startWindowDragging,
     toggleMaximize,
   } from "@api/window";
+  import { updateTrayLocale } from "@api/desktop";
   import { locale, setLocale, t } from "@i18n";
   import logo from "./assets/logo.png";
   import defaultTheme from "./themes/default";
@@ -59,7 +60,9 @@
     isMac = /Mac|iPhone|iPad/.test(navigator.platform);
     shortcutModifier = isMac ? "⌘" : "Ctrl";
     const savedLocale = localStorage.getItem("gds3d.locale");
-    if (savedLocale === "zh-CN" || savedLocale === "en") setLocale(savedLocale);
+    const initialLocale = savedLocale === "zh-CN" || savedLocale === "en" ? savedLocale : "en";
+    setLocale(initialLocale);
+    void updateTrayLocale(initialLocale);
     applyTheme();
     applyTypography(fontSize, fontFamily);
     void tick()
@@ -136,6 +139,7 @@
     const nextLocale = $locale === "zh-CN" ? "en" : "zh-CN";
     setLocale(nextLocale);
     localStorage.setItem("gds3d.locale", nextLocale);
+    void updateTrayLocale(nextLocale);
   }
 
   function changeTypography(next: { fontSize?: number; fontFamily?: string }) {

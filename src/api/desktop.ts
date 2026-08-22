@@ -16,3 +16,7 @@ export function getSystemFonts(): Promise<string[]> {
 export function updateDesktopPreferences(preferences: DesktopPreferences): Promise<void> {
   return invoke("update_desktop_preferences", { preferences });
 }
+
+export function updateTrayLocale(locale: "zh-CN" | "en"): Promise<void> {
+  return invoke("update_tray_locale", { locale });
+}

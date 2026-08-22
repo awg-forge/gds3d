@@ -29,6 +29,30 @@ const TRAY_SHOW_ID: &str = "tray-show";
 const TRAY_QUIT_ID: &str = "tray-quit";
 static SYSTEM_FONTS: OnceLock<Vec<String>> = OnceLock::new();
 
+struct TrayMenuState {
+    show: MenuItem<Wry>,
+    quit: MenuItem<Wry>,
+}
+
+struct TrayLabels {
+    show: &'static str,
+    quit: &'static str,
+}
+
+fn tray_labels(locale: &str) -> TrayLabels {
+    if locale == "zh-CN" {
+        TrayLabels {
+            show: "显示主窗口",
+            quit: "退出",
+        }
+    } else {
+        TrayLabels {
+            show: "Show Main Window",
+            quit: "Quit",
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn gds3d_install_window_style(window: *mut c_void) -> i32;
@@ -114,9 +138,14 @@ fn window_state_flags() -> StateFlags {
 }
 
 fn setup_tray(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    let show = MenuItem::with_id(app, TRAY_SHOW_ID, "Show gds3d", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Quit", true, None::<&str>)?;
+    let labels = tray_labels("en");
+    let show = MenuItem::with_id(app, TRAY_SHOW_ID, labels.show, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, TRAY_QUIT_ID, labels.quit, true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
+    app.manage(TrayMenuState {
+        show: show.clone(),
+        quit: quit.clone(),
+    });
     let icon = app
         .default_window_icon()
         .cloned()
@@ -146,6 +175,20 @@ fn setup_tray(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(app)?;
     Ok(())
+}
+
+#[tauri::command]
+fn update_tray_locale(app: AppHandle, locale: String) -> Result<(), String> {
+    let labels = tray_labels(&locale);
+    let state = app.state::<TrayMenuState>();
+    state
+        .show
+        .set_text(labels.show)
+        .map_err(|error| error.to_string())?;
+    state
+        .quit
+        .set_text(labels.quit)
+        .map_err(|error| error.to_string())
 }
 
 fn show_main_window(app: &AppHandle) {
@@ -477,6 +520,7 @@ fn main() {
             export::export_model,
             get_desktop_preferences,
             update_desktop_preferences,
+            update_tray_locale,
             get_system_fonts,
         ])
         .run(tauri::generate_context!())

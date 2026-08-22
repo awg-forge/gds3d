@@ -237,6 +237,9 @@
 .titlebar.macos-overlay {
   padding-left: 78px;
 }
+.titlebar:not(.macos-overlay) {
+  padding-right: 0;
+}
 .titlebar-menu {
   min-width: 0;
   display: flex;
@@ -360,6 +363,7 @@
   background: var(--border);
 }
 .titlebar-actions {
+  height: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -436,19 +440,20 @@
   color: var(--primary);
 }
 .window-controls {
+  height: 100%;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   -webkit-app-region: no-drag;
 }
 .window-button {
-  width: 32px;
-  height: 28px;
+  width: 46px;
+  height: 100%;
   display: grid;
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: var(--gds-radius-xs);
+  border-radius: 0;
   color: color-mix(in srgb, var(--text) 78%, var(--muted));
   background: transparent;
   cursor: pointer;

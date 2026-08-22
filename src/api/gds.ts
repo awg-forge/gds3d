@@ -25,7 +25,12 @@ export interface GdsFileInfo {
   file_path: string;
   cells: GdsCellInfo[];
 }
-export interface SceneSnapshot {
+export interface EditorStatus {
+  canUndo: boolean;
+  canRedo: boolean;
+  dirty: boolean;
+}
+export interface SceneSnapshot extends EditorStatus {
   revision: number;
   objects: unknown[];
   occurrences: RenderObjectOccurrences[];
@@ -72,6 +77,9 @@ export function importGds(path: string, selections: GdsLayerSelection[]): Promis
 export function getSceneSnapshot(): Promise<SceneSnapshot> {
   return invoke("scene_snapshot");
 }
+export function getEditorStatus(): Promise<EditorStatus> {
+  return invoke("editor_status");
+}
 export function inspectOccurrence(occurrence: Occurrence): Promise<OccurrenceInspection> {
   return invoke("inspect_occurrence", { occurrence });
 }
@@ -86,10 +94,10 @@ export function updateObjectDisplay(update: {
   visible?: boolean;
   zMin?: number;
   zMax?: number;
-}): Promise<void> {
+}): Promise<EditorStatus> {
   return invoke("update_object_display", { update });
 }
-export function setObjectsVisibility(objectIds: string[], visible: boolean): Promise<void> {
+export function setObjectsVisibility(objectIds: string[], visible: boolean): Promise<EditorStatus> {
   return invoke("set_objects_visibility", { objectIds, visible });
 }
 export function createBaseplate(target?: {
@@ -107,7 +115,7 @@ export function undoScene(): Promise<SceneSnapshot> {
 export function redoScene(): Promise<SceneSnapshot> {
   return invoke("redo_scene");
 }
-export function saveProject(path: string): Promise<void> {
+export function saveProject(path: string): Promise<EditorStatus> {
   return invoke("save_project", { path });
 }
 export function loadProject(path: string): Promise<SceneSnapshot> {

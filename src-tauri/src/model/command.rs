@@ -148,8 +148,18 @@ fn set_displays(
 
 #[derive(Debug, Default)]
 pub struct CommandHistory {
-    undo: Vec<DocumentCommand>,
-    redo: Vec<DocumentCommand>,
+    undo: Vec<HistoryEntry>,
+    redo: Vec<HistoryEntry>,
+    current_state: u64,
+    saved_state: u64,
+    next_state: u64,
+}
+
+#[derive(Debug)]
+struct HistoryEntry {
+    command: DocumentCommand,
+    before_state: u64,
+    after_state: u64,
 }
 
 impl CommandHistory {
@@ -159,7 +169,14 @@ impl CommandHistory {
         command: DocumentCommand,
     ) -> anyhow::Result<()> {
         command.apply(document)?;
-        self.undo.push(command);
+        self.next_state = self.next_state.wrapping_add(1);
+        let entry = HistoryEntry {
+            command,
+            before_state: self.current_state,
+            after_state: self.next_state,
+        };
+        self.current_state = entry.after_state;
+        self.undo.push(entry);
         if self.undo.len() > HISTORY_LIMIT {
             self.undo.remove(0);
         }
@@ -168,32 +185,53 @@ impl CommandHistory {
     }
 
     pub fn undo(&mut self, document: &mut ProjectDocument) -> anyhow::Result<bool> {
-        let Some(command) = self.undo.pop() else {
+        let Some(entry) = self.undo.pop() else {
             return Ok(false);
         };
-        if let Err(error) = command.undo(document) {
-            self.undo.push(command);
+        if let Err(error) = entry.command.undo(document) {
+            self.undo.push(entry);
             return Err(error);
         }
-        self.redo.push(command);
+        self.current_state = entry.before_state;
+        self.redo.push(entry);
         Ok(true)
     }
 
     pub fn redo(&mut self, document: &mut ProjectDocument) -> anyhow::Result<bool> {
-        let Some(command) = self.redo.pop() else {
+        let Some(entry) = self.redo.pop() else {
             return Ok(false);
         };
-        if let Err(error) = command.apply(document) {
-            self.redo.push(command);
+        if let Err(error) = entry.command.apply(document) {
+            self.redo.push(entry);
             return Err(error);
         }
-        self.undo.push(command);
+        self.current_state = entry.after_state;
+        self.undo.push(entry);
         Ok(true)
     }
 
     pub fn clear(&mut self) {
         self.undo.clear();
         self.redo.clear();
+        self.current_state = 0;
+        self.saved_state = 0;
+        self.next_state = 0;
+    }
+
+    pub fn mark_saved(&mut self) {
+        self.saved_state = self.current_state;
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.current_state != self.saved_state
     }
 }
 
@@ -219,11 +257,18 @@ mod tests {
             .execute(&mut document, command)
             .expect("add baseplate");
         assert_eq!(document.baseplates.len(), 1);
+        assert!(history.can_undo());
+        assert!(history.is_dirty());
+        history.mark_saved();
+        assert!(!history.is_dirty());
 
         assert!(history.undo(&mut document).expect("undo baseplate"));
         assert!(document.baseplates.is_empty());
+        assert!(history.can_redo());
+        assert!(history.is_dirty());
         assert!(history.redo(&mut document).expect("redo baseplate"));
         assert_eq!(document.baseplates.len(), 1);
+        assert!(!history.is_dirty());
 
         let object_id = format!("baseplate-{}", document.baseplates[0].id.0);
         let command =
@@ -269,5 +314,28 @@ mod tests {
         assert_eq!(document.display_mut(&object_id).cloned(), Some(before));
         assert!(history.redo(&mut document).expect("redo display"));
         assert_eq!(document.display_mut(&object_id).cloned(), Some(after));
+    }
+
+    #[test]
+    fn tracks_saved_branch() {
+        let mut document = ProjectDocument::default();
+        let mut history = CommandHistory::default();
+        let first = DocumentCommand::add_baseplate(&mut document, "Baseplate 1", bounds());
+        history.execute(&mut document, first).expect("first change");
+        history.mark_saved();
+
+        let second = DocumentCommand::add_baseplate(&mut document, "Baseplate 2", bounds());
+        history
+            .execute(&mut document, second)
+            .expect("second change");
+        assert!(history.undo(&mut document).expect("undo second change"));
+        assert!(!history.is_dirty());
+
+        let branch = DocumentCommand::add_baseplate(&mut document, "Substrate", bounds());
+        history
+            .execute(&mut document, branch)
+            .expect("branch change");
+        assert!(history.is_dirty());
+        assert!(!history.can_redo());
     }
 }

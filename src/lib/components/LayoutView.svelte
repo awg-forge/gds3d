@@ -9,6 +9,7 @@
     clearScene,
     createBaseplate,
     deleteSceneObject,
+    getEditorStatus,
     getSceneSnapshot,
     importGds,
     inspectGdsFile,
@@ -21,6 +22,7 @@
     setObjectsVisibility,
     undoScene,
     updateObjectDisplay,
+    type EditorStatus,
     type GdsFileInfo,
     type GdsLayerSelection,
     type Occurrence,
@@ -44,7 +46,13 @@
     themeMode,
     lightingIntensity,
     active,
-  }: { themeMode: "light" | "dark"; lightingIntensity: number; active: boolean } = $props();
+    onhistorychange,
+  }: {
+    themeMode: "light" | "dark";
+    lightingIntensity: number;
+    active: boolean;
+    onhistorychange?: (status: EditorStatus) => void;
+  } = $props();
 
   type Entry = {
     kind?: string;
@@ -181,6 +189,15 @@
   );
   let layerGroups = $derived(groupLayers(objects));
   let objectCount = $derived(objects.length + baseplates.length);
+
+  function updateEditorStatus(status: EditorStatus) {
+    onhistorychange?.(status);
+  }
+
+  function replaceScene(snapshot: SceneSnapshot) {
+    scene = snapshot;
+    updateEditorStatus(snapshot);
+  }
 
   function readPanelWidth(key: string, fallback: number): number {
     const saved = Number(localStorage.getItem(key));
@@ -413,7 +430,7 @@
             }
           : undefined,
       );
-      scene = updatedScene;
+      replaceScene(updatedScene);
       const addedBaseplate = updatedScene.objects
         .map((entry) => entry as Entry)
         .find(
@@ -430,7 +447,7 @@
     closeContextMenu();
     void run(async () => {
       const updatedScene = await deleteSceneObject(objectId);
-      scene = updatedScene;
+      replaceScene(updatedScene);
       selectSceneObject(firstLayerId(updatedScene));
     });
   }
@@ -481,13 +498,14 @@
           }),
         ),
       );
+      if (updates.length > 0) updateEditorStatus(await getEditorStatus());
     } catch (reason) {
       showToast(errorMessage(reason), "error");
     }
   }
 
   function applyHistorySnapshot(snapshot: SceneSnapshot) {
-    scene = snapshot;
+    replaceScene(snapshot);
     for (const entry of snapshot.objects) {
       const object = entry as Entry;
       const id = object.payload?.id;
@@ -529,7 +547,7 @@
     patchLocalDisplay(objectIds, { visible });
     await flushDisplayUpdates();
     try {
-      await setObjectsVisibility(objectIds, visible);
+      updateEditorStatus(await setObjectsVisibility(objectIds, visible));
     } catch (reason) {
       showToast(errorMessage(reason), "error");
     }
@@ -577,7 +595,7 @@
     window.addEventListener("gds3d-layout-action", handleLayoutAction);
     window.addEventListener("click", closeMenus);
     void getSceneSnapshot().then((snapshot) => {
-      scene = snapshot;
+      replaceScene(snapshot);
       sceneRevision += 1;
       return undefined;
     });
@@ -610,7 +628,7 @@
     await run(
       async () => {
         const importedScene = await importGds(candidate.file_path, selections);
-        scene = importedScene;
+        replaceScene(importedScene);
         selectSceneObject(firstLayerId(importedScene));
         sceneRevision += 1;
         const meshesReady = waitForViewportMeshes(sceneRevision, snapshotObjectIds(importedScene));
@@ -631,7 +649,7 @@
     try {
       await nextPaint();
       const loadedScene = await loadProject(path);
-      scene = loadedScene;
+      replaceScene(loadedScene);
       sceneRevision += 1;
       selectedId = null;
       const meshesReady = waitForViewportMeshes(sceneRevision, snapshotObjectIds(loadedScene));
@@ -652,7 +670,7 @@
     await flushDisplayUpdates();
     await run(
       async () => {
-        await saveProject(path);
+        updateEditorStatus(await saveProject(path));
         showToast(t("gds.projectSaveSuccess"), "success");
       },
       (reason) => t("gds.projectSaveFailed", { message: errorMessage(reason) }),
@@ -706,7 +724,7 @@
     await run(
       async () => {
         const clearedScene = await clearScene();
-        scene = clearedScene;
+        replaceScene(clearedScene);
         selectedId = null;
         importCandidate = null;
         collapsedGroups = [];

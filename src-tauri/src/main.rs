@@ -51,6 +51,14 @@ impl EditorSession {
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
+
+    fn status(&self) -> EditorStatus {
+        EditorStatus {
+            can_undo: self.history.can_undo(),
+            can_redo: self.history.can_redo(),
+            dirty: self.history.is_dirty(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -254,10 +262,22 @@ fn handle_window_event(window: &TauriWindow<Wry>, event: &WindowEvent) {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EditorStatus {
+    can_undo: bool,
+    can_redo: bool,
+    dirty: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SceneSnapshot {
     revision: u64,
     objects: Vec<model::SceneObject>,
     occurrences: Vec<RenderObjectOccurrences>,
+    can_undo: bool,
+    can_redo: bool,
+    dirty: bool,
 }
 
 #[derive(Serialize)]
@@ -289,12 +309,14 @@ struct BaseplateTarget {
 const MINIMUM_Z_SPAN: f32 = 1.0;
 const Z_SPAN_TOLERANCE: f32 = 0.0001;
 
-fn snapshot(document: &model::ProjectDocument) -> Result<SceneSnapshot, String> {
-    let render_scene = document
+fn snapshot(session: &EditorSession) -> Result<SceneSnapshot, String> {
+    let render_scene = session
+        .document
         .compile_render_scene()
         .map_err(|error| error.to_string())?;
+    let status = session.status();
     Ok(SceneSnapshot {
-        revision: document.revision(),
+        revision: session.document.revision(),
         objects: render_scene.objects(),
         occurrences: render_scene
             .layers
@@ -304,6 +326,9 @@ fn snapshot(document: &model::ProjectDocument) -> Result<SceneSnapshot, String> 
                 occurrences: layer.occurrences,
             })
             .collect(),
+        can_undo: status.can_undo,
+        can_redo: status.can_redo,
+        dirty: status.dirty,
     })
 }
 
@@ -335,7 +360,7 @@ async fn import_gds(
             .import_gds(Path::new(&path), &selections)
             .map_err(|error| error.to_string())?;
         session.history.clear();
-        snapshot(&session.document)
+        snapshot(&session)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -347,7 +372,16 @@ fn scene_snapshot(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, 
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    snapshot(&scene.document)
+    snapshot(&scene)
+}
+
+#[tauri::command]
+fn editor_status(state: tauri::State<'_, SceneState>) -> Result<EditorStatus, String> {
+    let scene = state
+        .0
+        .lock()
+        .map_err(|_| "scene state is unavailable".to_owned())?;
+    Ok(scene.status())
 }
 
 #[tauri::command]
@@ -372,14 +406,14 @@ fn clear_scene(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, Str
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
     scene.reset(model::ProjectDocument::default());
-    snapshot(&scene.document)
+    snapshot(&scene)
 }
 
 #[tauri::command]
 fn update_object_display(
     update: DisplayUpdate,
     state: tauri::State<'_, SceneState>,
-) -> Result<(), String> {
+) -> Result<EditorStatus, String> {
     let mut scene = state
         .0
         .lock()
@@ -418,7 +452,7 @@ fn update_object_display(
         after.z_max = z_max;
     }
     if before == after {
-        return Ok(());
+        return Ok(scene.status());
     }
     scene.execute(model::DocumentCommand::SetDisplay(vec![
         model::DisplayChange {
@@ -426,7 +460,8 @@ fn update_object_display(
             before,
             after,
         },
-    ]))
+    ]))?;
+    Ok(scene.status())
 }
 
 #[tauri::command]
@@ -434,7 +469,7 @@ fn set_objects_visibility(
     object_ids: Vec<String>,
     visible: bool,
     state: tauri::State<'_, SceneState>,
-) -> Result<(), String> {
+) -> Result<EditorStatus, String> {
     let mut scene = state
         .0
         .lock()
@@ -458,9 +493,10 @@ fn set_objects_visibility(
         });
     }
     if changes.is_empty() {
-        return Ok(());
+        return Ok(scene.status());
     }
-    scene.execute(model::DocumentCommand::SetDisplay(changes))
+    scene.execute(model::DocumentCommand::SetDisplay(changes))?;
+    Ok(scene.status())
 }
 
 #[tauri::command]
@@ -486,7 +522,7 @@ fn create_baseplate(
     let command =
         model::DocumentCommand::add_baseplate(&mut scene.document, baseplate_name, bounds);
     scene.execute(command)?;
-    snapshot(&scene.document)
+    snapshot(&scene)
 }
 
 #[tauri::command]
@@ -501,7 +537,7 @@ fn delete_scene_object(
     let command = model::DocumentCommand::remove_object(&scene.document, &object_id)
         .map_err(|error| error.to_string())?;
     scene.execute(command)?;
-    snapshot(&scene.document)
+    snapshot(&scene)
 }
 
 #[tauri::command]
@@ -511,7 +547,7 @@ fn undo_scene(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, Stri
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
     scene.undo()?;
-    snapshot(&scene.document)
+    snapshot(&scene)
 }
 
 #[tauri::command]
@@ -521,7 +557,7 @@ fn redo_scene(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, Stri
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
     scene.redo()?;
-    snapshot(&scene.document)
+    snapshot(&scene)
 }
 
 #[tauri::command]
@@ -560,13 +596,15 @@ async fn get_system_fonts() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn save_project(path: String, state: tauri::State<'_, SceneState>) -> Result<(), String> {
-    let scene = state
+fn save_project(path: String, state: tauri::State<'_, SceneState>) -> Result<EditorStatus, String> {
+    let mut scene = state
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
     archive::write_project_archive(Path::new(&path), &scene.document)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    scene.history.mark_saved();
+    Ok(scene.status())
 }
 
 #[tauri::command]
@@ -581,7 +619,7 @@ fn load_project(
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
     scene.reset(document);
-    snapshot(&scene.document)
+    snapshot(&scene)
 }
 
 fn main() {
@@ -619,6 +657,7 @@ fn main() {
             inspect_gds_file,
             import_gds,
             scene_snapshot,
+            editor_status,
             inspect_occurrence,
             clear_scene,
             update_object_display,

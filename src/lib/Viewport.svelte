@@ -129,7 +129,6 @@
   let renderedObjectIds = "";
   let renderedResetKey = -1;
   let selectionPointerStart: { x: number; y: number } | null = null;
-  let shiftPressed = $state(false);
   let panDragging = $state(false);
   let homeCameraState: CameraState = {
     target: Vector3.Zero(),
@@ -161,12 +160,7 @@
     cameraAnimationFrame = undefined;
   }
 
-  function updateShiftState(event: KeyboardEvent) {
-    if (event.key === "Shift") shiftPressed = event.type === "keydown";
-  }
-
   function resetPointerState() {
-    shiftPressed = false;
     panDragging = false;
   }
 
@@ -741,15 +735,11 @@
     });
     activeCamera.inputs.removeByType("ArcRotateCameraPointersInput");
     const pointerInput = new ArcRotateCameraPointersInput();
-    pointerInput.buttons = [1];
+    pointerInput.buttons = [1, 2];
     activeCamera.inputs.add(pointerInput);
     activeCamera.attachControl(false, false, -1);
-    activeCamera.movement.input.setInteraction("pointer", { button: 1 }, "rotate");
-    activeCamera.movement.input.setInteraction(
-      "pointer",
-      { button: 1, modifiers: { shift: true } },
-      "pan",
-    );
+    activeCamera.movement.input.setInteraction("pointer", { button: 1 }, "pan");
+    activeCamera.movement.input.setInteraction("pointer", { button: 2 }, "rotate");
     activeCamera.wheelDeltaPercentage = 0.01;
     activeCamera.panningSensibility = homePanningSensibility;
     activeCamera.lowerRadiusLimit = 0.01;
@@ -758,7 +748,7 @@
     viewportCanvas.addEventListener("wheel", preventPageZoom, { passive: false });
     viewportCanvas.addEventListener("pointerdown", stopCameraAnimation);
     const startSelection = (event: PointerEvent) => {
-      if (event.button === 1 && event.shiftKey) panDragging = true;
+      if (event.button === 1) panDragging = true;
       if (event.button !== 0) return;
       selectionPointerStart = { x: event.clientX, y: event.clientY };
     };
@@ -783,8 +773,6 @@
     viewportCanvas.addEventListener("pointerdown", startSelection);
     viewportCanvas.addEventListener("pointerup", finishSelection);
     viewportCanvas.addEventListener("pointercancel", finishSelection);
-    window.addEventListener("keydown", updateShiftState);
-    window.addEventListener("keyup", updateShiftState);
     window.addEventListener("blur", resetPointerState);
     window.addEventListener("gds3d-reset-camera", animateCameraHome);
     window.addEventListener("gds3d-viewport-display", updateLayerAppearanceFromEvent);
@@ -829,8 +817,6 @@
       viewportCanvas.removeEventListener("pointerdown", startSelection);
       viewportCanvas.removeEventListener("pointerup", finishSelection);
       viewportCanvas.removeEventListener("pointercancel", finishSelection);
-      window.removeEventListener("keydown", updateShiftState);
-      window.removeEventListener("keyup", updateShiftState);
       window.removeEventListener("blur", resetPointerState);
       resizeObserver.disconnect();
       scene?.onBeforeRenderObservable.remove(panningObserver);
@@ -875,11 +861,7 @@
 </script>
 
 <div class="viewport-frame">
-  <canvas
-    class:pan-ready={shiftPressed}
-    class:pan-dragging={panDragging}
-    bind:this={canvas}
-    aria-label={t("gds.viewportLabel")}
+  <canvas class:pan-dragging={panDragging} bind:this={canvas} aria-label={t("gds.viewportLabel")}
   ></canvas>
 </div>
 
@@ -897,9 +879,6 @@
     outline: none;
     touch-action: none;
     cursor: default;
-  }
-  canvas.pan-ready {
-    cursor: grab;
   }
   canvas.pan-dragging {
     cursor: grabbing;

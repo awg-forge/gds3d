@@ -30,7 +30,7 @@
     "mouseZoom": "Zoom view",
     "mouseLeftClick": "Left click",
     "mouseMiddleDrag": "Middle drag",
-    "mouseShiftMiddleDrag": "Shift + middle drag",
+    "mouseRightDrag": "Right drag",
     "mouseWheel": "Mouse wheel",
     "about": "About",
     "aboutDescription": "A tool for designing, editing, and visualizing GDSII layouts in 3D",

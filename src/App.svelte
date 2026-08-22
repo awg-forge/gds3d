@@ -11,6 +11,7 @@
     toggleMaximize,
   } from "@api/window";
   import { updateTrayLocale } from "@api/desktop";
+  import type { EditorStatus } from "@api/gds";
   import { locale, setLocale, t } from "@i18n";
   import logo from "./assets/logo.png";
   import defaultTheme from "./themes/default";
@@ -36,6 +37,8 @@
   let splashVisible = $state(shouldShowSplash());
   let isMac = $state(false);
   let shortcutModifier = $state("Ctrl");
+  let editorStatus = $state<EditorStatus>({ canUndo: false, canRedo: false, dirty: false });
+  let windowTitle = $derived(editorStatus.dirty ? "gds3d *" : "gds3d");
 
   const navigation = [
     { id: "layout", label: "gds.layout", icon: Layers3 },
@@ -220,6 +223,8 @@
     }
 
     if (!action) return;
+    if (action === "undo" && !editorStatus.canUndo) return;
+    if (action === "redo" && !editorStatus.canRedo) return;
     event.preventDefault();
     event.stopPropagation();
     requestLayoutAction(action);
@@ -257,7 +262,7 @@
   }
 </script>
 
-<svelte:head><title>gds3d</title></svelte:head>
+<svelte:head><title>{windowTitle}</title></svelte:head>
 
 <div class="app-shell sidebar-collapsed">
   <!-- svelte-ignore a11y_no_static_element_interactions (native window drag gesture) -->
@@ -316,10 +321,16 @@
           >
           {#if openMenu === "edit"}
             <div class="app-menu" role="menu">
-              <button role="menuitem" onclick={() => requestLayoutAction("undo")}
+              <button
+                role="menuitem"
+                disabled={!editorStatus.canUndo}
+                onclick={() => requestLayoutAction("undo")}
                 ><span>{t("gds.undo")}</span><kbd>{shortcutLabel("Z")}</kbd></button
               >
-              <button role="menuitem" onclick={() => requestLayoutAction("redo")}
+              <button
+                role="menuitem"
+                disabled={!editorStatus.canRedo}
+                onclick={() => requestLayoutAction("redo")}
                 ><span>{t("gds.redo")}</span><kbd>{shortcutModifier === "⌘" ? "⌘⇧Z" : "Ctrl+Y"}</kbd
                 ></button
               >
@@ -444,7 +455,12 @@
 
   <main class="app-content">
     <div class:inactive={activeView !== "layout"} class="app-view layout-app-view">
-      <LayoutView {themeMode} {lightingIntensity} active={activeView === "layout"} />
+      <LayoutView
+        {themeMode}
+        {lightingIntensity}
+        active={activeView === "layout"}
+        onhistorychange={(status) => (editorStatus = status)}
+      />
     </div>
     {#if activeView === "settings"}<div class="app-view settings-app-view">
         <SettingsView

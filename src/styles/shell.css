@@ -357,6 +357,14 @@
 .app-menu button:hover {
   background: color-mix(in srgb, var(--primary) 12%, transparent);
 }
+.app-menu button:disabled {
+  color: var(--muted);
+  opacity: 0.55;
+  cursor: default;
+}
+.app-menu button:disabled:hover {
+  background: transparent;
+}
 .app-menu button svg {
   color: var(--muted);
 }

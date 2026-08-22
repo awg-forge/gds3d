@@ -73,7 +73,7 @@
   };
   const homeAlpha = -Math.PI / 2;
   const homeBeta = Math.PI / 3;
-  const cameraResetDuration = 550;
+  const cameraResetDuration = 1_500;
   let {
     objects,
     objectIds,
@@ -362,8 +362,35 @@
     return ((((end - start + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
   }
 
-  function smootherStep(progress: number) {
-    return progress * progress * progress * (progress * (progress * 6 - 15) + 10);
+  function hermite(
+    progress: number,
+    startTime: number,
+    endTime: number,
+    startValue: number,
+    endValue: number,
+    startSlope: number,
+    endSlope: number,
+  ) {
+    const duration = endTime - startTime;
+    const position = (progress - startTime) / duration;
+    const position2 = position * position;
+    const position3 = position2 * position;
+    return (
+      (2 * position3 - 3 * position2 + 1) * startValue +
+      (position3 - 2 * position2 + position) * duration * startSlope +
+      (-2 * position3 + 3 * position2) * endValue +
+      (position3 - position2) * duration * endSlope
+    );
+  }
+
+  function cameraResetProgress(progress: number) {
+    const mirrored = progress > 0.5;
+    const position = mirrored ? 1 - progress : progress;
+    const eased =
+      position < 1 / 3
+        ? hermite(position, 0, 1 / 3, 0, 0.06, 0, 0.5)
+        : hermite(position, 1 / 3, 0.5, 0.06, 0.5, 0.5, 4);
+    return mirrored ? 1 - eased : eased;
   }
 
   function animateCameraHome() {
@@ -388,7 +415,7 @@
         return;
       }
       const progress = Math.min((now - startedAt) / cameraResetDuration, 1);
-      const eased = smootherStep(progress);
+      const eased = cameraResetProgress(progress);
       activeCamera.setTarget(Vector3.Lerp(startTarget, endState.target, eased), false, true, true);
       activeCamera.alpha = startAlpha + alphaDelta * eased;
       activeCamera.beta = startBeta + (endState.beta - startBeta) * eased;
@@ -442,6 +469,8 @@
     const panningObserver = scene.onBeforeRenderObservable.add(() => {
       const radiusRatio = Math.max(activeCamera.radius / homeCameraState.radius, 0.0001);
       activeCamera.panningSensibility = homePanningSensibility / radiusRatio;
+      activeCamera.minZ = Math.max(0.01, activeCamera.radius / 1_000);
+      activeCamera.maxZ = Math.max(10_000, activeCamera.radius * 4);
       if (keyLight) {
         keyLight.direction
           .copyFrom(activeCamera.target)

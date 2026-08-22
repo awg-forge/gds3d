@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick, untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
   import { Color3 } from "@babylonjs/core/Maths/math.color";
   import { Color4 } from "@babylonjs/core/Maths/math.color";
@@ -9,6 +9,7 @@
   import { Mesh } from "@babylonjs/core/Meshes/mesh";
   import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
   import { Scene } from "@babylonjs/core/scene";
+  import { CreateScreenshotUsingRenderTarget } from "@babylonjs/core/Misc/screenshotTools";
   import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
   import { Material } from "@babylonjs/core/Materials/material";
   import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -107,7 +108,6 @@
     onModelExportReady,
   }: Props = $props();
   let canvas = $state<HTMLCanvasElement>();
-  let exportCover = $state<string | null>(null);
   let scene: Scene | null = null;
   let camera: ArcRotateCamera | null = null;
   let meshes: Mesh[] = [];
@@ -215,7 +215,8 @@
     rendered.mesh.setEnabled(visible);
     const depth = Math.max(0.001, zMax - zMin);
     rendered.mesh.scaling.y = depth / rendered.baseDepth;
-    rendered.mesh.position.y = zMin;
+    // Worker meshes extend down from local Y=0, so their top belongs at zMax.
+    rendered.mesh.position.y = zMax;
   }
 
   function updateLayerAppearance(record: ViewportRecord, rendered: RenderedLayer) {
@@ -516,26 +517,6 @@
     cameraAnimationFrame = requestAnimationFrame(animate);
   }
 
-  function canvasPngDataUrl(target: HTMLCanvasElement): Promise<string> {
-    return new Promise((resolve, reject) => {
-      target.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error(t("gds.exportEncodeFailed")));
-          return;
-        }
-        const reader = new FileReader();
-        reader.addEventListener("load", () => {
-          if (typeof reader.result === "string") resolve(reader.result);
-          else reject(new Error(t("gds.exportEncodeFailed")));
-        });
-        reader.addEventListener("error", () =>
-          reject(reader.error ?? new Error(t("gds.exportEncodeFailed"))),
-        );
-        reader.readAsDataURL(blob);
-      }, "image/png");
-    });
-  }
-
   function blobDataUrl(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -550,16 +531,62 @@
     });
   }
 
+  function encodePng(width: number, height: number, pixels: ArrayBufferView): Promise<string> {
+    const expectedLength = width * height * 4;
+    if (pixels.byteLength !== expectedLength) {
+      return Promise.reject(new Error(t("gds.exportEncodeFailed")));
+    }
+    const source = new Uint8ClampedArray(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+    const target = document.createElement("canvas");
+    target.width = width;
+    target.height = height;
+    const context = target.getContext("2d");
+    if (!context) return Promise.reject(new Error(t("gds.exportEncodeFailed")));
+    const image = context.createImageData(width, height);
+    const rowLength = width * 4;
+    for (let targetRow = 0; targetRow < height; targetRow += 1) {
+      const sourceStart = (height - targetRow - 1) * rowLength;
+      image.data.set(source.subarray(sourceStart, sourceStart + rowLength), targetRow * rowLength);
+    }
+    context.putImageData(image, 0, 0);
+    return new Promise((resolve, reject) => {
+      target.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error(t("gds.exportEncodeFailed")));
+          return;
+        }
+        void blobDataUrl(blob).then(resolve, reject);
+      }, "image/png");
+    });
+  }
+
+  async function exportTimeout<T>(operation: Promise<T>): Promise<T> {
+    let timeout: number | undefined;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timeout = window.setTimeout(() => reject(new Error(t("gds.exportTimedOut"))), 35_000);
+        }),
+      ]);
+    } finally {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    }
+  }
+
   onMount(() => {
     if (!canvas) return;
     const viewportCanvas = canvas;
     const viewportEngine = new Engine(
       viewportCanvas,
       true,
-      { preserveDrawingBuffer: true, stencil: true },
+      { preserveDrawingBuffer: false, stencil: true },
       true,
     );
-    scene = new Scene(viewportEngine);
+    const activeScene = new Scene(viewportEngine);
+    scene = activeScene;
+    // Transparent meshes must retain the depth written by opaque meshes in group 0.
+    activeScene.setRenderingAutoClearDepthStencil(1, false);
     updateEnvironment();
     const activeCamera = new ArcRotateCamera(
       "camera",
@@ -567,29 +594,69 @@
       Math.PI / 3,
       100,
       Vector3.Zero(),
-      scene,
+      activeScene,
     );
     camera = activeCamera;
+    const renderFrame = () => {
+      if (!resizePaused) activeScene.render();
+    };
     onCaptureReady?.(async (width, height) => {
       const maximumSize = viewportEngine.getCaps().maxTextureSize;
       if (width > maximumSize || height > maximumSize) {
         throw new Error(t("gds.exportTextureLimit", { width, height, maximum: maximumSize }));
       }
-      const originalWidth = viewportEngine.getRenderWidth();
-      const originalHeight = viewportEngine.getRenderHeight();
-      exportCover = viewportCanvas.toDataURL("image/png");
-      await tick();
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       try {
-        viewportEngine.setSize(width, height, true);
-        scene?.render(false, true);
-        const dataUrl = await canvasPngDataUrl(viewportCanvas);
+        const dataUrl = await exportTimeout(
+          new Promise<string>((resolve, reject) => {
+            CreateScreenshotUsingRenderTarget(
+              viewportEngine,
+              activeCamera,
+              { width, height },
+              resolve,
+              "image/png",
+              1,
+              false,
+              undefined,
+              false,
+              false,
+              true,
+              undefined,
+              (texture) => {
+                texture.readPixels = () => {
+                  // WebKitGTK can leave Babylon's asynchronous pixel read pending indefinitely.
+                  // eslint-disable-next-line no-underscore-dangle
+                  const pixels = texture._readPixelsSync(0, 0, null, true, false);
+                  return pixels
+                    ? Promise.resolve(pixels)
+                    : Promise.reject(new Error(t("gds.exportEncodeFailed")));
+                };
+              },
+              (dumpWidth, dumpHeight, pixels, successCallback) => {
+                const encode = async () => {
+                  try {
+                    const result = await encodePng(dumpWidth, dumpHeight, pixels);
+                    successCallback?.(result);
+                  } catch (reason) {
+                    reject(reason);
+                  }
+                };
+                void encode();
+              },
+              30_000,
+              () => reject(new Error(t("gds.exportTimedOut"))),
+            );
+          }),
+        );
         return { dataUrl, width, height };
-      } finally {
-        viewportEngine.setSize(originalWidth, originalHeight, true);
-        scene?.render(false, true);
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        exportCover = null;
+      } catch (reason) {
+        if (
+          reason instanceof Error &&
+          (reason.message === t("gds.exportTimedOut") ||
+            reason.message === t("gds.exportEncodeFailed"))
+        ) {
+          throw reason;
+        }
+        throw new Error(t("gds.exportRetry"), { cause: reason });
       }
     });
     onModelExportReady?.(async (format) => {
@@ -650,15 +717,14 @@
     });
     renderedResetKey = resetKey;
     void synchronizeObjects(objects, true);
-    viewportEngine.runRenderLoop(() => {
-      if (!resizePaused) scene?.render();
-    });
+    viewportEngine.runRenderLoop(renderFrame);
     let resizeFrame: number | undefined;
     const resize = () => {
       if (resizePaused) return;
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
       resizeFrame = requestAnimationFrame(() => {
         resizeFrame = undefined;
+        if (resizePaused) return;
         viewportEngine.resize();
       });
     };
@@ -718,7 +784,6 @@
 
 <div class="viewport-frame">
   <canvas bind:this={canvas} aria-label={t("gds.viewportLabel")}></canvas>
-  {#if exportCover}<img class="export-cover" src={exportCover} alt="" aria-hidden="true" />{/if}
 </div>
 
 <style>
@@ -727,15 +792,6 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-  }
-  .export-cover {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    width: 100%;
-    height: 100%;
-    object-fit: fill;
-    pointer-events: none;
   }
   canvas {
     display: block;

@@ -29,7 +29,8 @@ export interface SceneSnapshot {
   revision: number;
   objects: unknown[];
 }
-export type ViewExportFormat = "png" | "svg" | "glb" | "stl";
+export type ViewExportFormat = "png" | "glb" | "stl";
+export type ViewExportQuality = "low" | "standard" | "high" | "ultra";
 export interface ViewCapture {
   dataUrl: string;
   width: number;
@@ -39,6 +40,7 @@ export interface ViewExportSettings {
   format: ViewExportFormat;
   width: number;
   height: number;
+  quality?: ViewExportQuality;
 }
 
 export function inspectGdsFile(path: string): Promise<GdsFileInfo> {
@@ -82,12 +84,8 @@ export function saveProject(path: string): Promise<void> {
 export function loadProject(path: string): Promise<SceneSnapshot> {
   return invoke("load_project", { path });
 }
-export function exportView(
-  path: string,
-  format: ViewExportFormat,
-  capture: ViewCapture,
-): Promise<void> {
-  return invoke("export_view", { path, format, capture });
+export async function exportView(path: string, capture: ViewCapture): Promise<void> {
+  await invoke("export_view", { path, capture });
 }
 export function exportModel(path: string, dataUrl: string): Promise<void> {
   return invoke("export_model", { path, dataUrl });
@@ -116,15 +114,18 @@ export function chooseProjectSavePath(): Promise<string | null> {
   });
 }
 
-export async function chooseViewExportPath(format: ViewExportFormat): Promise<string | null> {
+export async function chooseViewExportPath(
+  format: ViewExportFormat,
+  quality?: ViewExportQuality,
+): Promise<string | null> {
   const descriptions: Record<ViewExportFormat, string> = {
     png: "PNG image",
-    svg: "SVG image",
     glb: "glTF binary model",
     stl: "STL model",
   };
+  const qualitySuffix = format === "png" && quality ? `-${quality}` : "";
   const selected = await save({
-    defaultPath: `gds3d-view.${format}`,
+    defaultPath: `gds3d-view${qualitySuffix}.${format}`,
     filters: [{ name: descriptions[format], extensions: [format] }],
   });
   if (!selected) return null;

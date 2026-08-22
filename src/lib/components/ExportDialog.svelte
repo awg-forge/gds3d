@@ -1,12 +1,9 @@
 <script lang="ts">
-  import type { ViewExportFormat, ViewExportSettings } from "@api/gds";
+  import type { ViewExportFormat, ViewExportQuality, ViewExportSettings } from "@api/gds";
   import { t } from "@i18n";
   import Button from "./ui/Button.svelte";
   import Dialog from "./ui/Dialog.svelte";
   import Select from "./ui/Select.svelte";
-
-  type Quality = "low" | "standard" | "high";
-  type SizePreset = "4:3" | "3:2" | "16:9" | "1:1";
 
   let { busy, onexport, oncancel } = $props<{
     busy: boolean;
@@ -16,36 +13,24 @@
 
   let open = $state(true);
   let format = $state<ViewExportFormat>("png");
-  let quality = $state<Quality>("standard");
-  let sizePreset = $state<SizePreset>("4:3");
-  const widths: Record<Quality, number> = { low: 2000, standard: 4000, high: 6000 };
-  const ratios: Record<SizePreset, [number, number]> = {
-    "4:3": [4, 3],
-    "3:2": [3, 2],
-    "16:9": [16, 9],
-    "1:1": [1, 1],
+  let quality = $state<ViewExportQuality>("standard");
+  const dimensionsByQuality: Record<ViewExportQuality, { width: number; height: number }> = {
+    low: { width: 2400, height: 1800 },
+    standard: { width: 4000, height: 3000 },
+    high: { width: 6000, height: 4500 },
+    ultra: { width: 8000, height: 6000 },
   };
-  let dimensions = $derived.by(() => {
-    const width = widths[quality];
-    const [ratioWidth, ratioHeight] = ratios[sizePreset];
-    return { width, height: Math.floor((width * ratioHeight) / ratioWidth) };
-  });
+  let dimensions = $derived(dimensionsByQuality[quality]);
   const formatOptions = $derived([
     { label: t("gds.exportFormatPng"), value: "png" },
-    { label: t("gds.exportFormatSvg"), value: "svg" },
     { label: t("gds.exportFormatGlb"), value: "glb" },
     { label: t("gds.exportFormatStl"), value: "stl" },
-  ]);
-  const sizeOptions = $derived([
-    { label: t("gds.exportSize4x3"), value: "4:3" },
-    { label: t("gds.exportSize3x2"), value: "3:2" },
-    { label: t("gds.exportSize16x9"), value: "16:9" },
-    { label: t("gds.exportSize1x1"), value: "1:1" },
   ]);
   const qualityOptions = $derived([
     { label: t("gds.exportQualityLow"), value: "low" },
     { label: t("gds.exportQualityStandard"), value: "standard" },
     { label: t("gds.exportQualityHigh"), value: "high" },
+    { label: t("gds.exportQualityUltra"), value: "ultra" },
   ]);
 
   $effect(() => {
@@ -53,7 +38,7 @@
   });
 
   function submit() {
-    void onexport({ format, ...dimensions });
+    void onexport({ format, ...dimensions, quality: format === "png" ? quality : undefined });
   }
 </script>
 
@@ -66,19 +51,12 @@
         onValueChange={(value) => (format = value as ViewExportFormat)}
       /></label
     >
-    {#if format === "png" || format === "svg"}
-      <label
-        ><span>{t("gds.exportSize")}</span><Select
-          value={sizePreset}
-          options={sizeOptions}
-          onValueChange={(value) => (sizePreset = value as SizePreset)}
-        /></label
-      >
+    {#if format === "png"}
       <label
         ><span>{t("gds.exportQuality")}</span><Select
           value={quality}
           options={qualityOptions}
-          onValueChange={(value) => (quality = value as Quality)}
+          onValueChange={(value) => (quality = value as ViewExportQuality)}
         /></label
       >
       <output>{dimensions.width} × {dimensions.height} px</output>

@@ -584,7 +584,7 @@
   async function exportCurrentView(settings: ViewExportSettings) {
     const modelExport = settings.format === "glb" || settings.format === "stl";
     if ((!modelExport && !captureViewport) || (modelExport && !exportViewportModel)) return;
-    const path = await chooseViewExportPath(settings.format);
+    const path = await chooseViewExportPath(settings.format, settings.quality);
     if (!path) return;
     exportDialogOpen = false;
     busy = true;
@@ -602,7 +602,7 @@
       } else {
         const capture = await captureViewport?.(settings.width, settings.height);
         if (!capture) throw new Error(t("gds.exportUnavailable"));
-        await exportView(path, settings.format as "png" | "svg", capture);
+        await exportView(path, capture);
       }
       finishToast(toastId, t("gds.exportSuccess"), "success");
     } catch (reason) {

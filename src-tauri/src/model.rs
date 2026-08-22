@@ -83,14 +83,14 @@ impl DisplayProperties {
                 name: name.clone(),
                 color: "#5F6B78".to_owned(),
                 opacity: 1.0,
-                z_min: -20.0,
+                z_min: -15.0,
                 z_max: 0.0,
             },
             name,
             visible: true,
             color: "#5F6B78".to_owned(),
             opacity: 1.0,
-            z_min: -20.0,
+            z_min: -15.0,
             z_max: 0.0,
         }
     }

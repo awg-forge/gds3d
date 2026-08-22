@@ -10,13 +10,6 @@ pub struct ViewCapture {
     height: u32,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ViewExportFormat {
-    Png,
-    Svg,
-}
-
 #[tauri::command]
 pub async fn export_model(path: String, data_url: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -34,17 +27,14 @@ pub async fn export_model(path: String, data_url: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub async fn export_view(
-    path: String,
-    format: ViewExportFormat,
-    capture: ViewCapture,
-) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || write_export(&path, format, capture))
+pub async fn export_view(path: String, capture: ViewCapture) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || write_export(&path, capture))
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())??;
+    Ok(())
 }
 
-fn write_export(path: &str, format: ViewExportFormat, capture: ViewCapture) -> Result<(), String> {
+fn write_export(path: &str, capture: ViewCapture) -> Result<(), String> {
     if capture.width == 0 || capture.height == 0 {
         return Err("invalid viewport size".to_owned());
     }
@@ -55,14 +45,5 @@ fn write_export(path: &str, format: ViewExportFormat, capture: ViewCapture) -> R
     let png = STANDARD
         .decode(encoded)
         .map_err(|error| error.to_string())?;
-    match format {
-        ViewExportFormat::Png => fs::write(path, png).map_err(|error| error.to_string()),
-        ViewExportFormat::Svg => {
-            let svg = format!(
-                r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}"><image width="100%" height="100%" href="{}"/></svg>"#,
-                capture.width, capture.height, capture.width, capture.height, capture.data_url
-            );
-            fs::write(path, svg).map_err(|error| error.to_string())
-        }
-    }
+    fs::write(path, png).map_err(|error| error.to_string())
 }

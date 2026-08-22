@@ -1,3 +1,4 @@
+use super::gds::{ParsedGdsLayers, parse_gds_layers};
 use super::*;
 
 use std::collections::HashSet;

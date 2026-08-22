@@ -79,6 +79,8 @@
     "addBaseplate": "Add baseplate",
     "baseplate": "Baseplate",
     "baseplates": "Baseplates",
+    "undo": "Undo",
+    "redo": "Redo",
     "rename": "Rename",
     "delete": "Delete",
     "confirm": "Confirm",

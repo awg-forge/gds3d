@@ -79,6 +79,8 @@
     "addBaseplate": "添加底板",
     "baseplate": "底板",
     "baseplates": "底板",
+    "undo": "撤销",
+    "redo": "重做",
     "rename": "重命名",
     "delete": "删除",
     "confirm": "确认",

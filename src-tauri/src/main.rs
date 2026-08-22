@@ -21,7 +21,40 @@ use tauri::{App, AppHandle, Manager, Window as TauriWindow, WindowEvent, Wry};
 use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 #[derive(Default)]
-struct SceneState(Arc<Mutex<model::ProjectDocument>>);
+struct EditorSession {
+    document: model::ProjectDocument,
+    history: model::CommandHistory,
+}
+
+impl EditorSession {
+    fn execute(&mut self, command: model::DocumentCommand) -> Result<(), String> {
+        self.history
+            .execute(&mut self.document, command)
+            .map_err(|error| error.to_string())
+    }
+
+    fn reset(&mut self, document: model::ProjectDocument) {
+        self.document = document;
+        self.history.clear();
+    }
+
+    fn undo(&mut self) -> Result<(), String> {
+        self.history
+            .undo(&mut self.document)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    fn redo(&mut self) -> Result<(), String> {
+        self.history
+            .redo(&mut self.document)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+}
+
+#[derive(Default)]
+struct SceneState(Arc<Mutex<EditorSession>>);
 
 const MAIN_WINDOW_LABEL: &str = "main";
 const PREFERENCES_FILENAME: &str = "desktop-preferences.json";
@@ -294,13 +327,15 @@ async fn import_gds(
     }
     let document_state = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut document = document_state
+        let mut session = document_state
             .lock()
             .map_err(|_| "scene state is unavailable".to_owned())?;
-        document
+        session
+            .document
             .import_gds(Path::new(&path), &selections)
             .map_err(|error| error.to_string())?;
-        snapshot(&document)
+        session.history.clear();
+        snapshot(&session.document)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -312,7 +347,7 @@ fn scene_snapshot(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, 
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    snapshot(&scene)
+    snapshot(&scene.document)
 }
 
 #[tauri::command]
@@ -325,6 +360,7 @@ fn inspect_occurrence(
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
     scene
+        .document
         .inspect_occurrence(&occurrence)
         .map_err(|error| error.to_string())
 }
@@ -335,8 +371,8 @@ fn clear_scene(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, Str
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    *scene = model::ProjectDocument::default();
-    snapshot(&scene)
+    scene.reset(model::ProjectDocument::default());
+    snapshot(&scene.document)
 }
 
 #[tauri::command]
@@ -348,11 +384,14 @@ fn update_object_display(
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    let display = scene
+    let before = scene
+        .document
         .display_mut(&update.object_id)
+        .cloned()
         .ok_or_else(|| "scene object not found".to_owned())?;
-    let z_min = update.z_min.unwrap_or(display.z_min);
-    let z_max = update.z_max.unwrap_or(display.z_max);
+    let mut after = before.clone();
+    let z_min = update.z_min.unwrap_or(after.z_min);
+    let z_max = update.z_max.unwrap_or(after.z_max);
     if z_max - z_min < MINIMUM_Z_SPAN - Z_SPAN_TOLERANCE {
         return Err("Z range must be at least 1".to_owned());
     }
@@ -361,25 +400,33 @@ fn update_object_display(
         if name.is_empty() {
             return Err("display name cannot be empty".to_owned());
         }
-        display.name = name.to_owned();
+        after.name = name.to_owned();
     }
     if let Some(color) = update.color {
-        display.color = color;
+        after.color = color;
     }
     if let Some(opacity) = update.opacity {
-        display.opacity = opacity.clamp(0.0, 1.0);
+        after.opacity = opacity.clamp(0.0, 1.0);
     }
     if let Some(visible) = update.visible {
-        display.visible = visible;
+        after.visible = visible;
     }
     if update.z_min.is_some() {
-        display.z_min = z_min;
+        after.z_min = z_min;
     }
     if update.z_max.is_some() {
-        display.z_max = z_max;
+        after.z_max = z_max;
     }
-    scene.touch();
-    Ok(())
+    if before == after {
+        return Ok(());
+    }
+    scene.execute(model::DocumentCommand::SetDisplay(vec![
+        model::DisplayChange {
+            object_id: update.object_id,
+            before,
+            after,
+        },
+    ]))
 }
 
 #[tauri::command]
@@ -392,14 +439,28 @@ fn set_objects_visibility(
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
+    let mut changes = Vec::new();
     for object_id in object_ids {
-        let display = scene
+        let before = scene
+            .document
             .display_mut(&object_id)
+            .cloned()
             .ok_or_else(|| format!("scene object not found: {object_id}"))?;
-        display.visible = visible;
+        if before.visible == visible {
+            continue;
+        }
+        let mut after = before.clone();
+        after.visible = visible;
+        changes.push(model::DisplayChange {
+            object_id,
+            before,
+            after,
+        });
     }
-    scene.touch();
-    Ok(())
+    if changes.is_empty() {
+        return Ok(());
+    }
+    scene.execute(model::DocumentCommand::SetDisplay(changes))
 }
 
 #[tauri::command]
@@ -418,11 +479,14 @@ fn create_baseplate(
         })
     });
     let bounds = scene
+        .document
         .default_baseplate_bounds(&selection)
         .map_err(|error| error.to_string())?;
-    let baseplate_name = scene.next_baseplate_name();
-    scene.add_baseplate(baseplate_name, bounds);
-    snapshot(&scene)
+    let baseplate_name = scene.document.next_baseplate_name();
+    let command =
+        model::DocumentCommand::add_baseplate(&mut scene.document, baseplate_name, bounds);
+    scene.execute(command)?;
+    snapshot(&scene.document)
 }
 
 #[tauri::command]
@@ -434,10 +498,30 @@ fn delete_scene_object(
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    if !scene.remove_render_object(&object_id) {
-        return Err("scene object not found".to_owned());
-    }
-    snapshot(&scene)
+    let command = model::DocumentCommand::remove_object(&scene.document, &object_id)
+        .map_err(|error| error.to_string())?;
+    scene.execute(command)?;
+    snapshot(&scene.document)
+}
+
+#[tauri::command]
+fn undo_scene(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, String> {
+    let mut scene = state
+        .0
+        .lock()
+        .map_err(|_| "scene state is unavailable".to_owned())?;
+    scene.undo()?;
+    snapshot(&scene.document)
+}
+
+#[tauri::command]
+fn redo_scene(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, String> {
+    let mut scene = state
+        .0
+        .lock()
+        .map_err(|_| "scene state is unavailable".to_owned())?;
+    scene.redo()?;
+    snapshot(&scene.document)
 }
 
 #[tauri::command]
@@ -481,7 +565,8 @@ fn save_project(path: String, state: tauri::State<'_, SceneState>) -> Result<(),
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    archive::write_project_archive(Path::new(&path), &scene).map_err(|error| error.to_string())
+    archive::write_project_archive(Path::new(&path), &scene.document)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -495,8 +580,8 @@ fn load_project(
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    *scene = document;
-    snapshot(&scene)
+    scene.reset(document);
+    snapshot(&scene.document)
 }
 
 fn main() {
@@ -540,6 +625,8 @@ fn main() {
             set_objects_visibility,
             create_baseplate,
             delete_scene_object,
+            undo_scene,
+            redo_scene,
             save_project,
             load_project,
             export::export_view,

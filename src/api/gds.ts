@@ -101,6 +101,12 @@ export function createBaseplate(target?: {
 export function deleteSceneObject(objectId: string): Promise<SceneSnapshot> {
   return invoke("delete_scene_object", { objectId });
 }
+export function undoScene(): Promise<SceneSnapshot> {
+  return invoke("undo_scene");
+}
+export function redoScene(): Promise<SceneSnapshot> {
+  return invoke("redo_scene");
+}
 export function saveProject(path: string): Promise<void> {
   return invoke("save_project", { path });
 }

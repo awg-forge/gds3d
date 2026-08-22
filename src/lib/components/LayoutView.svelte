@@ -17,7 +17,9 @@
     exportView,
     exportModel,
     inspectOccurrence,
+    redoScene,
     setObjectsVisibility,
+    undoScene,
     updateObjectDisplay,
     type GdsFileInfo,
     type GdsLayerSelection,
@@ -484,6 +486,42 @@
     }
   }
 
+  function applyHistorySnapshot(snapshot: SceneSnapshot) {
+    scene = snapshot;
+    for (const entry of snapshot.objects) {
+      const object = entry as Entry;
+      const id = object.payload?.id;
+      const display = object.payload?.display;
+      if (!id || !display) continue;
+      window.dispatchEvent(
+        new CustomEvent<ViewportDisplayEvent>("gds3d-viewport-display", {
+          detail: {
+            objectId: id,
+            update: {
+              color: display.color,
+              opacity: display.opacity,
+              visible: display.visible,
+              z_min: display.z_min,
+              z_max: display.z_max,
+            },
+          },
+        }),
+      );
+    }
+    const selectionStillExists = snapshot.objects.some(
+      (entry) => (entry as Entry).payload?.id === selectedId,
+    );
+    if (!selectionStillExists) selectSceneObject(firstLayerId(snapshot));
+  }
+
+  function changeHistory(direction: "undo" | "redo") {
+    closeContextMenu();
+    void run(async () => {
+      await flushDisplayUpdates();
+      applyHistorySnapshot(direction === "undo" ? await undoScene() : await redoScene());
+    });
+  }
+
   async function updateGroupVisibility(group: LayerGroup, visible: boolean) {
     const objectIds = group.entries
       .map((entry) => entry.payload?.id)
@@ -520,6 +558,12 @@
           break;
         case "createBaseplate":
           addBaseplate();
+          break;
+        case "undo":
+          changeHistory("undo");
+          break;
+        case "redo":
+          changeHistory("redo");
           break;
         case "renameSelected":
           if (selectedId) requestRename(selectedId);

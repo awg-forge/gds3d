@@ -49,6 +49,8 @@
     | "saveAs"
     | "closeProject"
     | "createBaseplate"
+    | "undo"
+    | "redo"
     | "renameSelected"
     | "deleteSelected"
     | "resetCamera";
@@ -198,7 +200,10 @@
       else if (key === "s") action = event.shiftKey ? "saveAs" : "saveProject";
       else if (!event.shiftKey && key === "n") action = "createBaseplate";
       else if (!event.shiftKey && key === "f") action = "resetCamera";
-      else if (isMac && event.metaKey && !event.shiftKey && key === "backspace") {
+      else if (!event.shiftKey && key === "z") action = "undo";
+      else if ((event.shiftKey && key === "z") || (!isMac && !event.shiftKey && key === "y")) {
+        action = "redo";
+      } else if (isMac && event.metaKey && !event.shiftKey && key === "backspace") {
         action = "deleteSelected";
       }
     } else if (!event.shiftKey && activeView === "layout") {
@@ -311,6 +316,14 @@
           >
           {#if openMenu === "edit"}
             <div class="app-menu" role="menu">
+              <button role="menuitem" onclick={() => requestLayoutAction("undo")}
+                ><span>{t("gds.undo")}</span><kbd>{shortcutLabel("Z")}</kbd></button
+              >
+              <button role="menuitem" onclick={() => requestLayoutAction("redo")}
+                ><span>{t("gds.redo")}</span><kbd>{shortcutModifier === "⌘" ? "⌘⇧Z" : "Ctrl+Y"}</kbd
+                ></button
+              >
+              <div class="menu-separator"></div>
               <button role="menuitem" onclick={() => requestLayoutAction("createBaseplate")}
                 ><span>{t("gds.addBaseplate")}</span><kbd>{shortcutLabel("N")}</kbd></button
               >

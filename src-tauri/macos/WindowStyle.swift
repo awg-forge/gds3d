@@ -12,7 +12,9 @@ private func installRoundedCorners(on window: NSWindow) -> Bool {
         return false
     }
     layer.cornerRadius = 10
-    layer.cornerCurve = .continuous
+    if #available(macOS 10.15, *) {
+        layer.cornerCurve = .continuous
+    }
     layer.masksToBounds = true
     contentView.needsLayout = true
     contentView.layoutSubtreeIfNeeded()

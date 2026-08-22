@@ -25,6 +25,9 @@
       "dmg"
     ],
     "copyright": "Copyright © 2026 AWGForge",
+    "icon": [
+      "icons/icon.png"
+    ],
     "resources": {
       "../LICENSE": "LICENSE"
     }

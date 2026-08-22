@@ -11,7 +11,7 @@
   },
   "app": {
     "enableGTKAppId": true,
-    "macOSPrivateApi": false,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -37,7 +37,10 @@
       "nsis",
       "dmg"
     ],
-    "copyright": "Copyright © 2026 AWGForge"
+    "copyright": "Copyright © 2026 AWGForge",
+    "resources": {
+      "../LICENSE": "LICENSE"
+    }
   },
   "plugins": {}
 }

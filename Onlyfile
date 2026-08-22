@@ -6,11 +6,11 @@
 !version 0.4
 
 [help] Start development mode
-dev(level = "info") ? @os("windows") shell~=pwsh:
-    $env:GDS3D_LOG = "{{level}}"; pnpm tauri dev
+dev() ? @os("windows") shell~=pwsh:
+    pnpm tauri dev
 
-dev(level = "info"):
-    GDS3D_LOG={{level}} pnpm tauri dev
+dev():
+    pnpm tauri dev
 
 [help] Build the application
 build() ? @os("macos"):

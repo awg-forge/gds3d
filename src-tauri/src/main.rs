@@ -751,17 +751,12 @@ fn load_project(
         .as_ref()
         .is_some_and(|project| project.path() == path)
     {
-        let document = archive::read_project_document(&path).map_err(|error| error.to_string())?;
-        scene.document = document;
-        scene.history.clear();
-        scene.history.mark_saved();
-        scene.saved_display_defaults = scene.document.display_defaults();
         return snapshot(&scene);
     }
 
+    let document = archive::read_project_document(&path).map_err(|error| error.to_string())?;
     let project =
         project_file::LockedProjectFile::open(&path).map_err(|error| error.to_string())?;
-    let document = archive::read_project_document(&path).map_err(|error| error.to_string())?;
     scene.document = document;
     scene.history.clear();
     scene.history.mark_saved();

@@ -197,7 +197,7 @@
       }
       if (keyLight) {
         keyLight.intensity = 0.65 * lightingIntensity;
-        keyLight.diffuse = new Color3(1, 0.95, 0.86);
+        keyLight.diffuse = new Color3(1, 1, 1);
       }
       return;
     }
@@ -209,7 +209,7 @@
     }
     if (keyLight) {
       keyLight.intensity = 0.75 * lightingIntensity;
-      keyLight.diffuse = new Color3(1, 0.97, 0.9);
+      keyLight.diffuse = new Color3(1, 1, 1);
     }
   }
 

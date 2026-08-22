@@ -37,8 +37,17 @@
   let splashVisible = $state(shouldShowSplash());
   let isMac = $state(false);
   let shortcutModifier = $state("Ctrl");
-  let editorStatus = $state<EditorStatus>({ canUndo: false, canRedo: false, dirty: false });
-  let windowTitle = $derived(editorStatus.dirty ? "gds3d *" : "gds3d");
+  let editorStatus = $state<EditorStatus>({
+    canUndo: false,
+    canRedo: false,
+    dirty: false,
+    projectPath: null,
+  });
+  let documentName = $derived(
+    editorStatus.projectPath?.split(/[\\/]/).at(-1) ||
+      (editorStatus.dirty ? t("gds.unsavedProject") : "gds3d"),
+  );
+  let windowTitle = $derived(`${editorStatus.dirty ? "* " : ""}${documentName}`);
 
   const navigation = [
     { id: "layout", label: "gds.layout", icon: Layers3 },
@@ -50,6 +59,7 @@
     | "openProject"
     | "saveProject"
     | "saveAs"
+    | "exportAs"
     | "closeProject"
     | "createBaseplate"
     | "undo"
@@ -305,6 +315,10 @@
                 ></button
               >
               <div class="menu-separator"></div>
+              <button role="menuitem" onclick={() => requestLayoutAction("exportAs")}
+                ><span>{t("gds.exportAs")}</span></button
+              >
+              <div class="menu-separator"></div>
               <button role="menuitem" onclick={() => requestLayoutAction("closeProject")}
                 ><span>{t("gds.closeProject")}</span></button
               >
@@ -382,6 +396,10 @@
         </div>
       </nav>
       <div class="titlebar-drag-space"></div>
+    </div>
+    <div class="titlebar-document-name" aria-live="polite">
+      {#if editorStatus.dirty}<span class="dirty-marker" aria-hidden="true">*</span>{/if}
+      <span>{documentName}</span>
     </div>
     <div class="titlebar-actions">
       <button

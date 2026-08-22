@@ -219,6 +219,16 @@ fn default_opacity() -> f32 {
 }
 
 impl DisplayProperties {
+    pub fn current_defaults(&self) -> DisplayDefaults {
+        DisplayDefaults {
+            name: self.name.clone(),
+            color: self.color.clone(),
+            opacity: self.opacity,
+            z_min: self.z_min,
+            z_max: self.z_max,
+        }
+    }
+
     pub fn gds_layer(name: impl Into<String>) -> Self {
         let name = name.into();
         Self {

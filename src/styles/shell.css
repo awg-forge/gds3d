@@ -248,6 +248,29 @@
   gap: 8px;
   overflow: visible;
 }
+.titlebar-document-name {
+  position: absolute;
+  left: 50%;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  pointer-events: none;
+  user-select: none;
+  transform: translateX(-50%);
+}
+.titlebar-document-name > span:last-child {
+  display: block;
+  max-width: min(42vw, 560px);
+  padding-block: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dirty-marker {
+  position: absolute;
+  right: calc(100% + 5px);
+  color: var(--text);
+}
 .menu-logo-button {
   width: 24px;
   height: 24px;

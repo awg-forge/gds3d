@@ -42,7 +42,7 @@
   }
 </script>
 
-<Dialog bind:open title={t("gds.saveAs")} closeLabel={t("gds.closeDialog")} width="440px">
+<Dialog bind:open title={t("gds.exportAs")} closeLabel={t("gds.closeDialog")} width="440px">
   <div class="export-settings">
     <label
       ><span>{t("gds.exportFormat")}</span><Select

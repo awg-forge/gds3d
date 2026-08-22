@@ -2,6 +2,7 @@
 
 mod archive;
 mod export;
+mod project_file;
 // The scene module retains APIs used by the next editor features (baseplates,
 // selection and partial GDS imports). They are intentionally kept while the
 // Svelte editor is migrated from the egui application.
@@ -9,7 +10,7 @@ mod export;
 mod model;
 
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 #[cfg(target_os = "macos")]
 use std::ffi::c_void;
 use std::fs;
@@ -24,6 +25,8 @@ use tauri_plugin_window_state::{StateFlags, WindowExt};
 struct EditorSession {
     document: model::ProjectDocument,
     history: model::CommandHistory,
+    project_file: Option<project_file::LockedProjectFile>,
+    saved_display_defaults: HashMap<String, model::DisplayDefaults>,
 }
 
 impl EditorSession {
@@ -33,9 +36,11 @@ impl EditorSession {
             .map_err(|error| error.to_string())
     }
 
-    fn reset(&mut self, document: model::ProjectDocument) {
+    fn reset_blank(&mut self, document: model::ProjectDocument) {
         self.document = document;
         self.history.clear();
+        self.project_file = None;
+        self.saved_display_defaults.clear();
     }
 
     fn undo(&mut self) -> Result<(), String> {
@@ -57,6 +62,10 @@ impl EditorSession {
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
             dirty: self.history.is_dirty(),
+            project_path: self
+                .project_file
+                .as_ref()
+                .map(|project| project.path().to_string_lossy().into_owned()),
         }
     }
 }
@@ -267,6 +276,7 @@ struct EditorStatus {
     can_undo: bool,
     can_redo: bool,
     dirty: bool,
+    project_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -278,6 +288,7 @@ struct SceneSnapshot {
     can_undo: bool,
     can_redo: bool,
     dirty: bool,
+    project_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -315,9 +326,15 @@ fn snapshot(session: &EditorSession) -> Result<SceneSnapshot, String> {
         .compile_render_scene()
         .map_err(|error| error.to_string())?;
     let status = session.status();
+    let mut objects = render_scene.objects();
+    for object in &mut objects {
+        if let Some(defaults) = session.saved_display_defaults.get(object.id()) {
+            object.display_mut().defaults = defaults.clone();
+        }
+    }
     Ok(SceneSnapshot {
         revision: session.document.revision(),
-        objects: render_scene.objects(),
+        objects,
         occurrences: render_scene
             .layers
             .into_iter()
@@ -329,6 +346,7 @@ fn snapshot(session: &EditorSession) -> Result<SceneSnapshot, String> {
         can_undo: status.can_undo,
         can_redo: status.can_redo,
         dirty: status.dirty,
+        project_path: status.project_path,
     })
 }
 
@@ -360,6 +378,7 @@ async fn import_gds(
             .import_gds(Path::new(&path), &selections)
             .map_err(|error| error.to_string())?;
         session.history.clear();
+        session.history.mark_unsaved();
         snapshot(&session)
     })
     .await
@@ -405,7 +424,7 @@ fn clear_scene(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, Str
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    scene.reset(model::ProjectDocument::default());
+    scene.reset_blank(model::ProjectDocument::default());
     snapshot(&scene)
 }
 
@@ -596,15 +615,67 @@ async fn get_system_fonts() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn save_project(path: String, state: tauri::State<'_, SceneState>) -> Result<EditorStatus, String> {
+fn save_project(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, String> {
     let mut scene = state
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    archive::write_project_archive(Path::new(&path), &scene.document)
+    let EditorSession {
+        document,
+        history,
+        project_file,
+        saved_display_defaults,
+    } = &mut *scene;
+    project_file
+        .as_mut()
+        .ok_or_else(|| "project has not been saved yet".to_owned())?
+        .write(document)
         .map_err(|error| error.to_string())?;
+    history.mark_saved();
+    *saved_display_defaults = document.display_defaults();
+    snapshot(&scene)
+}
+
+#[tauri::command]
+fn save_project_as(
+    path: String,
+    state: tauri::State<'_, SceneState>,
+) -> Result<SceneSnapshot, String> {
+    let path = PathBuf::from(path);
+    let mut scene = state
+        .0
+        .lock()
+        .map_err(|_| "scene state is unavailable".to_owned())?;
+    if scene
+        .project_file
+        .as_ref()
+        .is_some_and(|project| project.path() == path)
+    {
+        let EditorSession {
+            document,
+            history,
+            project_file,
+            saved_display_defaults,
+        } = &mut *scene;
+        project_file
+            .as_mut()
+            .expect("matching project file exists")
+            .write(document)
+            .map_err(|error| error.to_string())?;
+        history.mark_saved();
+        *saved_display_defaults = document.display_defaults();
+        return snapshot(&scene);
+    }
+
+    let mut project =
+        project_file::LockedProjectFile::create(&path).map_err(|error| error.to_string())?;
+    project
+        .write(&scene.document)
+        .map_err(|error| error.to_string())?;
+    scene.project_file = Some(project);
     scene.history.mark_saved();
-    Ok(scene.status())
+    scene.saved_display_defaults = scene.document.display_defaults();
+    snapshot(&scene)
 }
 
 #[tauri::command]
@@ -612,13 +683,32 @@ fn load_project(
     path: String,
     state: tauri::State<'_, SceneState>,
 ) -> Result<SceneSnapshot, String> {
-    let document =
-        archive::read_project_document(Path::new(&path)).map_err(|error| error.to_string())?;
+    let path = PathBuf::from(path);
     let mut scene = state
         .0
         .lock()
         .map_err(|_| "scene state is unavailable".to_owned())?;
-    scene.reset(document);
+    if scene
+        .project_file
+        .as_ref()
+        .is_some_and(|project| project.path() == path)
+    {
+        let document = archive::read_project_document(&path).map_err(|error| error.to_string())?;
+        scene.document = document;
+        scene.history.clear();
+        scene.history.mark_saved();
+        scene.saved_display_defaults = scene.document.display_defaults();
+        return snapshot(&scene);
+    }
+
+    let project =
+        project_file::LockedProjectFile::open(&path).map_err(|error| error.to_string())?;
+    let document = archive::read_project_document(&path).map_err(|error| error.to_string())?;
+    scene.document = document;
+    scene.history.clear();
+    scene.history.mark_saved();
+    scene.project_file = Some(project);
+    scene.saved_display_defaults = scene.document.display_defaults();
     snapshot(&scene)
 }
 
@@ -667,6 +757,7 @@ fn main() {
             undo_scene,
             redo_scene,
             save_project,
+            save_project_as,
             load_project,
             export::export_view,
             export::export_model,

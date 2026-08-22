@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 use anyhow::{Context, anyhow, bail};
 use crc32fast::Hasher as Crc32Hasher;
@@ -54,8 +56,18 @@ pub fn read_scene_objects(file_path: &Path) -> anyhow::Result<Vec<SceneObject>> 
 }
 
 /// Write a version 2 `.gds3d` archive containing the editable project document.
+#[cfg(test)]
 pub fn write_project_archive(file_path: &Path, document: &ProjectDocument) -> anyhow::Result<()> {
     let path = normalize_output_path(file_path)?;
+    let mut file = fs::File::create(&path)
+        .with_context(|| format!("create project archive: {}", path.display()))?;
+    write_project_archive_to(&mut file, document)
+}
+
+pub fn write_project_archive_to(
+    file: &mut fs::File,
+    document: &ProjectDocument,
+) -> anyhow::Result<()> {
     let archive = DocumentArchive {
         format: "gds3d",
         version: DOCUMENT_ARCHIVE_FORMAT_VERSION,
@@ -66,7 +78,7 @@ pub fn write_project_archive(file_path: &Path, document: &ProjectDocument) -> an
         &serde_json::to_value(archive)?,
     )?];
     write_document_sources(&mut entries, document.sources.values())?;
-    write_zip_file(&path, &entries)
+    write_zip(file, &entries)
 }
 
 /// Read the current project archive, migrating legacy version 1 archives into
@@ -215,6 +227,7 @@ pub fn source_key_for_path(path: &Path) -> String {
     format!("{stem}-{digest:08x}{suffix}")
 }
 
+#[cfg(test)]
 fn normalize_output_path(file_path: &Path) -> anyhow::Result<PathBuf> {
     if file_path.extension().and_then(|suffix| suffix.to_str()) == Some("gds3d") {
         return Ok(file_path.to_path_buf());
@@ -411,9 +424,16 @@ impl ZipEntry {
     }
 }
 
+#[cfg(test)]
 fn write_zip_file(path: &Path, entries: &[ZipEntry]) -> anyhow::Result<()> {
     let mut file = fs::File::create(path)
         .with_context(|| format!("create project archive: {}", path.display()))?;
+    write_zip(&mut file, entries)
+}
+
+fn write_zip(mut file: &mut fs::File, entries: &[ZipEntry]) -> anyhow::Result<()> {
+    file.set_len(0)?;
+    file.seek(SeekFrom::Start(0))?;
     let mut central_directory = Vec::new();
     let mut offset = 0u64;
 
@@ -472,6 +492,7 @@ fn write_zip_file(path: &Path, entries: &[ZipEntry]) -> anyhow::Result<()> {
     write_u32(&mut file, u32::try_from(central_dir_size)?)?;
     write_u32(&mut file, u32::try_from(central_dir_offset)?)?;
     write_u16(&mut file, 0)?;
+    file.flush()?;
     Ok(())
 }
 

@@ -1,7 +1,7 @@
 use super::gds::{ParsedGdsLayers, parse_gds_layers};
 use super::*;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use indexmap::IndexMap;
@@ -41,6 +41,24 @@ impl RenderScene {
 }
 
 impl ProjectDocument {
+    pub fn display_defaults(&self) -> HashMap<String, DisplayDefaults> {
+        self.layer_views
+            .values()
+            .map(|layer| {
+                (
+                    format!("layer-{}", layer.id.0),
+                    layer.display.current_defaults(),
+                )
+            })
+            .chain(self.baseplates.values().map(|baseplate| {
+                (
+                    format!("baseplate-{}", baseplate.id.0),
+                    baseplate.display.current_defaults(),
+                )
+            }))
+            .collect()
+    }
+
     pub fn from_gds(path: &Path, selections: &[GdsLayerSelection]) -> anyhow::Result<Self> {
         let mut document = Self::default();
         document.import_gds(path, selections)?;

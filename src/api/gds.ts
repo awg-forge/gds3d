@@ -29,6 +29,7 @@ export interface EditorStatus {
   canUndo: boolean;
   canRedo: boolean;
   dirty: boolean;
+  projectPath: string | null;
 }
 export interface SceneSnapshot extends EditorStatus {
   revision: number;
@@ -115,8 +116,11 @@ export function undoScene(): Promise<SceneSnapshot> {
 export function redoScene(): Promise<SceneSnapshot> {
   return invoke("redo_scene");
 }
-export function saveProject(path: string): Promise<EditorStatus> {
-  return invoke("save_project", { path });
+export function saveProject(): Promise<SceneSnapshot> {
+  return invoke("save_project");
+}
+export function saveProjectAs(path: string): Promise<SceneSnapshot> {
+  return invoke("save_project_as", { path });
 }
 export function loadProject(path: string): Promise<SceneSnapshot> {
   return invoke("load_project", { path });
@@ -144,9 +148,11 @@ export async function chooseProjectPath(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
-export function chooseProjectSavePath(): Promise<string | null> {
+export function chooseProjectSavePath(
+  defaultPath: string = "gds3d-project.gds3d",
+): Promise<string | null> {
   return save({
-    defaultPath: "gds3d-project.gds3d",
+    defaultPath,
     filters: [{ name: "gds3d project", extensions: ["gds3d"] }],
   });
 }

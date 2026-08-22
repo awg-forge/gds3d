@@ -146,13 +146,25 @@ fn set_displays(
     Ok(())
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CommandHistory {
     undo: Vec<HistoryEntry>,
     redo: Vec<HistoryEntry>,
     current_state: u64,
-    saved_state: u64,
+    saved_state: Option<u64>,
     next_state: u64,
+}
+
+impl Default for CommandHistory {
+    fn default() -> Self {
+        Self {
+            undo: Vec::new(),
+            redo: Vec::new(),
+            current_state: 0,
+            saved_state: Some(0),
+            next_state: 0,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -211,15 +223,15 @@ impl CommandHistory {
     }
 
     pub fn clear(&mut self) {
-        self.undo.clear();
-        self.redo.clear();
-        self.current_state = 0;
-        self.saved_state = 0;
-        self.next_state = 0;
+        *self = Self::default();
+    }
+
+    pub fn mark_unsaved(&mut self) {
+        self.saved_state = None;
     }
 
     pub fn mark_saved(&mut self) {
-        self.saved_state = self.current_state;
+        self.saved_state = Some(self.current_state);
     }
 
     pub fn can_undo(&self) -> bool {
@@ -231,7 +243,7 @@ impl CommandHistory {
     }
 
     pub fn is_dirty(&self) -> bool {
-        self.current_state != self.saved_state
+        self.saved_state != Some(self.current_state)
     }
 }
 
@@ -246,6 +258,18 @@ mod tests {
             max_x: 3.0,
             max_y: 4.0,
         }
+    }
+
+    #[test]
+    fn tracks_blank_and_unsaved_states() {
+        let mut history = CommandHistory::default();
+        assert!(!history.is_dirty());
+        history.mark_unsaved();
+        assert!(history.is_dirty());
+        history.mark_saved();
+        assert!(!history.is_dirty());
+        history.clear();
+        assert!(!history.is_dirty());
     }
 
     #[test]
@@ -337,5 +361,22 @@ mod tests {
             .expect("branch change");
         assert!(history.is_dirty());
         assert!(!history.can_redo());
+    }
+
+    #[test]
+    fn captures_display_defaults() {
+        let mut document = ProjectDocument::default();
+        let id = document.add_baseplate("Baseplate 1", bounds());
+        let object_id = format!("baseplate-{}", id.0);
+        let display = document.display_mut(&object_id).expect("baseplate display");
+        display.color = "#123456".to_owned();
+        display.opacity = 0.6;
+        display.z_min = -20.0;
+
+        let defaults = document.display_defaults();
+        let saved = defaults.get(&object_id).expect("saved display defaults");
+        assert_eq!(saved.color, "#123456");
+        assert_eq!(saved.opacity, 0.6);
+        assert_eq!(saved.z_min, -20.0);
     }
 }

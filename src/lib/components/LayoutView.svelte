@@ -15,6 +15,7 @@
     inspectGdsFile,
     loadProject,
     saveProject,
+    saveProjectAs,
     exportView,
     exportModel,
     inspectOccurrence,
@@ -164,6 +165,7 @@
   let captureViewport: ((width: number, height: number) => Promise<ViewCapture>) | null = null;
   let exportViewportModel: ((format: "glb" | "stl") => Promise<string>) | null = null;
   let exportDialogOpen = $state(false);
+  let projectPath = $state<string | null>(null);
   let readyViewportResetKey = -1;
   let readyViewportObjectIds = "";
   let selected = $derived(
@@ -191,6 +193,7 @@
   let objectCount = $derived(objects.length + baseplates.length);
 
   function updateEditorStatus(status: EditorStatus) {
+    projectPath = status.projectPath;
     onhistorychange?.(status);
   }
 
@@ -566,7 +569,10 @@
           void saveCurrentProject();
           break;
         case "saveAs":
-          void saveCurrentView();
+          void saveCurrentProjectAs();
+          break;
+        case "exportAs":
+          openExportDialog();
           break;
         case "closeProject":
           void closeProject();
@@ -665,19 +671,32 @@
 
   async function saveCurrentProject() {
     if (!scene) return;
+    if (projectPath) {
+      await persistProject(null);
+      return;
+    }
     const path = await chooseProjectSavePath();
-    if (!path) return;
+    if (path) await persistProject(path);
+  }
+
+  async function saveCurrentProjectAs() {
+    if (!scene) return;
+    const path = await chooseProjectSavePath(projectPath ?? undefined);
+    if (path) await persistProject(path);
+  }
+
+  async function persistProject(path: string | null) {
     await flushDisplayUpdates();
     await run(
       async () => {
-        updateEditorStatus(await saveProject(path));
+        replaceScene(path ? await saveProjectAs(path) : await saveProject());
         showToast(t("gds.projectSaveSuccess"), "success");
       },
       (reason) => t("gds.projectSaveFailed", { message: errorMessage(reason) }),
     );
   }
 
-  async function saveCurrentView() {
+  function openExportDialog() {
     if (!scene || !captureViewport) return;
     exportDialogOpen = true;
   }

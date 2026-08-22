@@ -1,10 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const mainWindow = getCurrentWindow();
 
 export function closeWindow(): Promise<void> {
   return mainWindow.close();
+}
+
+export function onExitRequested(callback: () => void): Promise<UnlistenFn> {
+  return listen("gds3d-exit-requested", callback);
+}
+
+export function cancelExit(): Promise<void> {
+  return invoke("cancel_exit");
+}
+
+export function confirmExit(): Promise<void> {
+  return invoke("confirm_exit");
 }
 
 export function restartApplication(): Promise<void> {

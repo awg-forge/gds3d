@@ -5,6 +5,7 @@
     open = $bindable(false),
     title,
     closeLabel = "Close dialog",
+    showClose = true,
     width = "480px",
     children,
     footer,
@@ -12,6 +13,7 @@
     open?: boolean;
     title: string;
     closeLabel?: string;
+    showClose?: boolean;
     width?: string;
     children: import("svelte").Snippet;
     footer?: import("svelte").Snippet;
@@ -33,9 +35,9 @@
     >
       <div class="ui-dialog-header">
         <Dialog.Title class="ui-dialog-title">{title}</Dialog.Title>
-        <Dialog.Close class="ui-dialog-close" aria-label={closeLabel}>
-          <X size={18} />
-        </Dialog.Close>
+        {#if showClose}<Dialog.Close class="ui-dialog-close" aria-label={closeLabel}>
+            <X size={18} />
+          </Dialog.Close>{/if}
       </div>
       <div class="ui-dialog-body">{@render children()}</div>
       {#if footer}<div class="ui-dialog-footer">{@render footer()}</div>{/if}

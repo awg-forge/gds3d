@@ -48,11 +48,13 @@
     lightingIntensity,
     active,
     onhistorychange,
+    onsaveforexitready,
   }: {
     themeMode: "light" | "dark";
     lightingIntensity: number;
     active: boolean;
     onhistorychange?: (status: EditorStatus) => void;
+    onsaveforexitready?: (save: (() => Promise<boolean>) | null) => void;
   } = $props();
 
   type Entry = {
@@ -134,6 +136,7 @@
   let selectedOccurrence = $state<OccurrenceInspection | null>(null);
   let occurrenceRequest = 0;
   let busy = $state(false);
+  let openingFile = $state<"gds" | "project" | null>(null);
   let importCandidate = $state<GdsFileInfo | null>(null);
   let collapsedGroups = $state<string[]>([]);
   let workbench = $state<HTMLDivElement | null>(null);
@@ -557,6 +560,7 @@
   }
 
   onMount(() => {
+    onsaveforexitready?.(saveCurrentProject);
     const handleLayoutAction = (event: Event) => {
       switch ((event as CustomEvent<string>).detail) {
         case "openGds":
@@ -606,6 +610,7 @@
       return undefined;
     });
     return () => {
+      onsaveforexitready?.(null);
       window.removeEventListener("gds3d-layout-action", handleLayoutAction);
       window.removeEventListener("click", closeMenus);
     };
@@ -620,12 +625,17 @@
   async function chooseGds() {
     const path = await chooseGdsPath();
     if (!path) return;
-    await run(
-      async () => {
-        importCandidate = await inspectGdsFile(path);
-      },
-      (reason) => t("gds.importFailed", { message: errorMessage(reason) }),
-    );
+    openingFile = "gds";
+    try {
+      await run(
+        async () => {
+          importCandidate = await inspectGdsFile(path);
+        },
+        (reason) => t("gds.importFailed", { message: errorMessage(reason) }),
+      );
+    } finally {
+      openingFile = null;
+    }
   }
 
   async function confirmImport(selections: GdsLayerSelection[]) {
@@ -650,6 +660,7 @@
   async function openProject() {
     const path = await chooseProjectPath();
     if (!path) return;
+    openingFile = "project";
     busy = true;
     const toastId = showLoadingToast(t("gds.projectOpening"));
     try {
@@ -666,34 +677,38 @@
       finishToast(toastId, t("gds.projectOpenFailed", { message: errorMessage(reason) }), "error");
     } finally {
       busy = false;
+      openingFile = null;
     }
   }
 
-  async function saveCurrentProject() {
-    if (!scene) return;
+  async function saveCurrentProject(): Promise<boolean> {
+    if (!scene) return false;
     if (projectPath) {
-      await persistProject(null);
-      return;
+      return persistProject(null);
     }
     const path = await chooseProjectSavePath();
-    if (path) await persistProject(path);
+    return path ? persistProject(path) : false;
   }
 
-  async function saveCurrentProjectAs() {
-    if (!scene) return;
+  async function saveCurrentProjectAs(): Promise<boolean> {
+    if (!scene) return false;
     const path = await chooseProjectSavePath(projectPath ?? undefined);
-    if (path) await persistProject(path);
+    return path ? persistProject(path) : false;
   }
 
-  async function persistProject(path: string | null) {
+  async function persistProject(path: string | null): Promise<boolean> {
     await flushDisplayUpdates();
-    await run(
-      async () => {
-        replaceScene(path ? await saveProjectAs(path) : await saveProject());
-        showToast(t("gds.projectSaveSuccess"), "success");
-      },
-      (reason) => t("gds.projectSaveFailed", { message: errorMessage(reason) }),
-    );
+    busy = true;
+    try {
+      replaceScene(path ? await saveProjectAs(path) : await saveProject());
+      showToast(t("gds.projectSaveSuccess"), "success");
+      return true;
+    } catch (reason) {
+      showToast(t("gds.projectSaveFailed", { message: errorMessage(reason) }), "error");
+      return false;
+    } finally {
+      busy = false;
+    }
   }
 
   function openExportDialog() {
@@ -924,9 +939,18 @@
             {/each}
           {/if}
         </div>{:else}<div class="empty-actions">
-          <Button size="sm" loading={busy} onclick={chooseGds}>{t("gds.openGds")}</Button>
-          <Button size="sm" variant="outline" disabled={busy} onclick={openProject}
-            >{t("gds.openProject")}</Button
+          <Button
+            size="sm"
+            loading={openingFile === "gds"}
+            disabled={busy && openingFile !== "gds"}
+            onclick={chooseGds}>{t("gds.openGds")}</Button
+          >
+          <Button
+            size="sm"
+            variant="outline"
+            loading={openingFile === "project"}
+            disabled={busy && openingFile !== "project"}
+            onclick={openProject}>{t("gds.openProject")}</Button
           >
         </div>{/if}
     </aside>

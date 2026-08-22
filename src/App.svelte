@@ -2,10 +2,13 @@
   import { onMount, tick } from "svelte";
   import { Copy, Layers3, Minus, Moon, Settings, Square, Sun, X } from "@lucide/svelte";
   import {
+    cancelExit,
     closeWindow,
+    confirmExit,
     isWindowMaximized,
     markFrontendReady,
     minimizeWindow,
+    onExitRequested,
     onWindowResized,
     startWindowDragging,
     toggleMaximize,
@@ -17,6 +20,7 @@
   import defaultTheme from "./themes/default";
   import { applyTypography, readFontFamily, readFontSize } from "./themes/typography";
   import AboutDialog from "./lib/components/AboutDialog.svelte";
+  import ExitConfirmDialog from "./lib/components/ExitConfirmDialog.svelte";
   import LayoutView from "./lib/components/LayoutView.svelte";
   import SettingsView from "./lib/components/SettingsView.svelte";
   import ShortcutsDialog from "./lib/components/ShortcutsDialog.svelte";
@@ -37,6 +41,9 @@
   let splashVisible = $state(shouldShowSplash());
   let isMac = $state(false);
   let shortcutModifier = $state("Ctrl");
+  let exitConfirmOpen = $state(false);
+  let exitBusy = $state(false);
+  let saveBeforeExit: (() => Promise<boolean>) | null = null;
   let editorStatus = $state<EditorStatus>({
     canUndo: false,
     canRedo: false,
@@ -93,16 +100,43 @@
     window.addEventListener("keydown", handleKeyboardShortcut, true);
     void isWindowMaximized().then((value) => (maximized = value));
     let stopResize: (() => void) | undefined;
+    let stopExitRequested: (() => void) | undefined;
     void onWindowResized(() => {
       void isWindowMaximized().then((value) => (maximized = value));
     }).then((unlisten) => (stopResize = unlisten));
+    void onExitRequested(() => {
+      exitConfirmOpen = true;
+    }).then((unlisten) => (stopExitRequested = unlisten));
     return () => {
       window.removeEventListener("click", closeMenu);
       window.removeEventListener("contextmenu", preventNativeContextMenu);
       window.removeEventListener("keydown", handleKeyboardShortcut, true);
       stopResize?.();
+      stopExitRequested?.();
     };
   });
+
+  async function cancelRequestedExit() {
+    exitConfirmOpen = false;
+    await cancelExit();
+  }
+
+  async function discardAndExit() {
+    exitBusy = true;
+    await confirmExit();
+  }
+
+  async function saveAndExit() {
+    if (!saveBeforeExit) return;
+    exitBusy = true;
+    try {
+      if (!(await saveBeforeExit())) return;
+      exitConfirmOpen = false;
+      await confirmExit();
+    } finally {
+      exitBusy = false;
+    }
+  }
 
   function readView(): View {
     const saved = localStorage.getItem("gds3d.active-view");
@@ -478,6 +512,7 @@
         {lightingIntensity}
         active={activeView === "layout"}
         onhistorychange={(status) => (editorStatus = status)}
+        onsaveforexitready={(save) => (saveBeforeExit = save)}
       />
     </div>
     {#if activeView === "settings"}<div class="app-view settings-app-view">
@@ -494,6 +529,13 @@
 
 <ShortcutsDialog bind:open={shortcutsOpen} />
 <AboutDialog bind:open={aboutOpen} />
+<ExitConfirmDialog
+  bind:open={exitConfirmOpen}
+  busy={exitBusy}
+  oncancel={() => void cancelRequestedExit()}
+  ondiscard={() => void discardAndExit()}
+  onsave={() => void saveAndExit()}
+/>
 <Toast />
 {#if splashVisible}<SplashScreen onready={() => (splashVisible = false)} />{/if}
 

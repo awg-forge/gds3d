@@ -32,6 +32,8 @@
     border-color: var(--border) !important;
     color: var(--primary) !important;
     font-family: var(--app-font-family) !important;
+    user-select: none;
+    -webkit-user-select: none;
     backdrop-filter: blur(18px) saturate(1.08);
     box-shadow: var(--shadow);
   }

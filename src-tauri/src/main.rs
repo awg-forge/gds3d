@@ -15,10 +15,11 @@ use std::collections::{BTreeSet, HashMap};
 use std::ffi::c_void;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{App, AppHandle, Manager, Window as TauriWindow, WindowEvent, Wry};
+use tauri::{App, AppHandle, Emitter, Manager, RunEvent, Window as TauriWindow, WindowEvent, Wry};
 use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 #[derive(Default)]
@@ -72,6 +73,12 @@ impl EditorSession {
 
 #[derive(Default)]
 struct SceneState(Arc<Mutex<EditorSession>>);
+
+#[derive(Default)]
+struct ExitState {
+    allow_exit: AtomicBool,
+    prompt_open: AtomicBool,
+}
 
 const MAIN_WINDOW_LABEL: &str = "main";
 const PREFERENCES_FILENAME: &str = "desktop-preferences.json";
@@ -259,15 +266,66 @@ fn handle_window_event(window: &TauriWindow<Wry>, event: &WindowEvent) {
     if window.label() != MAIN_WINDOW_LABEL {
         return;
     }
-    if let WindowEvent::CloseRequested { api, .. } = event
-        && window
+    if let WindowEvent::CloseRequested { api, .. } = event {
+        let close_to_tray = window
             .state::<DesktopPreferencesState>()
             .preferences()
-            .is_ok_and(|preferences| preferences.close_to_tray)
-    {
-        api.prevent_close();
-        let _ = window.hide();
+            .is_ok_and(|preferences| preferences.close_to_tray);
+        if close_to_tray {
+            api.prevent_close();
+            let _ = window.hide();
+            return;
+        }
+        let dirty = window
+            .state::<SceneState>()
+            .0
+            .lock()
+            .map_or(true, |scene| scene.history.is_dirty());
+        if dirty {
+            api.prevent_close();
+            window.app_handle().exit(0);
+        }
     }
+}
+
+fn handle_run_event(app: &AppHandle, event: RunEvent) {
+    let RunEvent::ExitRequested { api, .. } = event else {
+        return;
+    };
+    let exit_state = app.state::<ExitState>();
+    if exit_state.allow_exit.load(Ordering::Acquire) {
+        return;
+    }
+    let dirty = app
+        .state::<SceneState>()
+        .0
+        .lock()
+        .map_or(true, |scene| scene.history.is_dirty());
+    if !dirty {
+        return;
+    }
+
+    api.prevent_exit();
+    if exit_state.prompt_open.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    show_main_window(app);
+    if let Err(error) = app.emit("gds3d-exit-requested", ()) {
+        eprintln!("failed to show exit confirmation: {error}");
+        exit_state.prompt_open.store(false, Ordering::Release);
+    }
+}
+
+#[tauri::command]
+fn cancel_exit(state: tauri::State<'_, ExitState>) {
+    state.prompt_open.store(false, Ordering::Release);
+}
+
+#[tauri::command]
+fn confirm_exit(app: AppHandle, state: tauri::State<'_, ExitState>) {
+    state.prompt_open.store(false, Ordering::Release);
+    state.allow_exit.store(true, Ordering::Release);
+    app.exit(0);
 }
 
 #[derive(Serialize)]
@@ -715,6 +773,7 @@ fn load_project(
 fn main() {
     tauri::Builder::default()
         .manage(SceneState::default())
+        .manage(ExitState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -744,6 +803,8 @@ fn main() {
         .on_window_event(handle_window_event)
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
+            cancel_exit,
+            confirm_exit,
             inspect_gds_file,
             import_gds,
             scene_snapshot,
@@ -766,6 +827,7 @@ fn main() {
             update_tray_locale,
             get_system_fonts,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running gds3d");
+        .build(tauri::generate_context!())
+        .expect("error while building gds3d")
+        .run(handle_run_event);
 }

@@ -255,6 +255,16 @@ fn scene_snapshot(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, 
 }
 
 #[tauri::command]
+fn clear_scene(state: tauri::State<'_, SceneState>) -> Result<SceneSnapshot, String> {
+    let mut scene = state
+        .0
+        .lock()
+        .map_err(|_| "scene state is unavailable".to_owned())?;
+    *scene = model::Scene::default();
+    Ok(snapshot(&scene))
+}
+
+#[tauri::command]
 fn update_object_display(
     update: DisplayUpdate,
     state: tauri::State<'_, SceneState>,
@@ -455,6 +465,7 @@ fn main() {
             inspect_gds_file,
             import_gds,
             scene_snapshot,
+            clear_scene,
             update_object_display,
             set_objects_visibility,
             create_baseplate,

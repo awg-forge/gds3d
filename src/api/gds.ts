@@ -39,6 +39,9 @@ export function importGds(path: string, selections: GdsLayerSelection[]): Promis
 export function getSceneSnapshot(): Promise<SceneSnapshot> {
   return invoke("scene_snapshot");
 }
+export function clearScene(): Promise<SceneSnapshot> {
+  return invoke("clear_scene");
+}
 export function updateObjectDisplay(update: {
   objectId: string;
   name?: string;

@@ -18,6 +18,7 @@
   import LayoutView from "./lib/components/LayoutView.svelte";
   import SettingsView from "./lib/components/SettingsView.svelte";
   import SplashScreen from "./lib/components/SplashScreen.svelte";
+  import Toast from "./lib/components/ui/Toast.svelte";
 
   type View = "layout" | "settings";
   type ThemeMode = "light" | "dark";
@@ -41,6 +42,7 @@
     | "openGds"
     | "openProject"
     | "saveProject"
+    | "closeProject"
     | "createBaseplate"
     | "renameSelected"
     | "deleteSelected"
@@ -268,6 +270,10 @@
               <button role="menuitem" onclick={() => requestLayoutAction("saveProject")}
                 ><span>{t("gds.saveProject")}</span><kbd>{shortcutLabel("S")}</kbd></button
               >
+              <div class="menu-separator"></div>
+              <button role="menuitem" onclick={() => requestLayoutAction("closeProject")}
+                ><span>{t("gds.closeProject")}</span></button
+              >
             </div>
           {/if}
         </div>
@@ -414,6 +420,7 @@
 </div>
 
 <AboutDialog bind:open={aboutOpen} />
+<Toast />
 {#if splashVisible}<SplashScreen onready={() => (splashVisible = false)} />{/if}
 
 <style>

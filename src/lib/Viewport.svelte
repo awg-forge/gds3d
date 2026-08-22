@@ -7,14 +7,12 @@
   import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
   import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
   import { Mesh } from "@babylonjs/core/Meshes/mesh";
-  import { PolygonMeshBuilder } from "@babylonjs/core/Meshes/polygonMesh";
   import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
   import { Scene } from "@babylonjs/core/scene";
   import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
   import { Material } from "@babylonjs/core/Materials/material";
-  import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
+  import { Vector3 } from "@babylonjs/core/Maths/math.vector";
   import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
-  import earcut from "earcut";
   import { t } from "@i18n";
   import defaultTheme from "../themes/default";
 
@@ -26,6 +24,8 @@
     resetKey: number;
     resizePaused?: boolean;
     onSelect?: (id: string | null) => void;
+    onMeshesReady?: (resetKey: number, objectIds: string) => void;
+    onMeshesError?: (resetKey: number, reason: unknown) => void;
   }
   type ViewportRecord = {
     kind?: string;
@@ -65,6 +65,20 @@
       z_max?: number;
     };
   };
+  type WorkerLayerInput = {
+    id: string;
+    depth: number;
+    polygons: { points: number[][]; holes?: number[][][] }[];
+  };
+  type WorkerLayerMesh = {
+    id: string;
+    positions: Float32Array;
+    normals: Float32Array;
+    indices: Uint32Array;
+  };
+  type MeshWorkerResponse =
+    | { ok: true; layers: WorkerLayerMesh[] }
+    | { ok: false; message: string };
   type CameraState = {
     target: Vector3;
     alpha: number;
@@ -82,6 +96,8 @@
     resetKey,
     resizePaused = false,
     onSelect,
+    onMeshesReady,
+    onMeshesError,
   }: Props = $props();
   let canvas = $state<HTMLCanvasElement>();
   let scene: Scene | null = null;
@@ -101,6 +117,9 @@
   let keyLight: DirectionalLight | null = null;
   let requestEngineResize: (() => void) | null = null;
   let cameraAnimationFrame: number | undefined;
+  let activeMeshWorker: Worker | null = null;
+  let cancelMeshBuild: (() => void) | null = null;
+  let meshBuildGeneration = 0;
 
   function preventContextMenu(event: MouseEvent) {
     event.preventDefault();
@@ -212,51 +231,59 @@
     applyLayerAppearance(rendered);
   }
 
-  function appendValues(target: number[], source: ArrayLike<number> | null | undefined) {
-    if (!source) return;
-    for (let index = 0; index < source.length; index += 1) target.push(source[index]);
+  function cancelActiveMeshBuild() {
+    cancelMeshBuild?.();
+    cancelMeshBuild = null;
+    activeMeshWorker = null;
   }
 
-  function buildLayerMesh(
-    objectId: string,
-    polygons: { points: number[][]; holes?: number[][][] }[],
-    depth: number,
-  ) {
-    if (!scene) return null;
-    const positions: number[] = [];
-    const normals: number[] = [];
-    const uvs: number[] = [];
-    const indices: number[] = [];
+  function buildMeshesInWorker(layers: WorkerLayerInput[]): Promise<WorkerLayerMesh[] | null> {
+    cancelActiveMeshBuild();
+    const worker = new Worker(new URL("./mesh.worker.ts", import.meta.url), { type: "module" });
+    activeMeshWorker = worker;
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (result: WorkerLayerMesh[] | null, reason?: unknown) => {
+        if (settled) return;
+        settled = true;
+        worker.terminate();
+        if (activeMeshWorker === worker) activeMeshWorker = null;
+        if (cancelMeshBuild === cancel) cancelMeshBuild = null;
+        if (reason !== undefined) reject(reason);
+        else resolve(result);
+      };
+      const cancel = () => finish(null);
+      cancelMeshBuild = cancel;
+      worker.onmessage = ({ data }: MessageEvent<MeshWorkerResponse>) => {
+        if (data.ok) finish(data.layers);
+        else finish(null, new Error(data.message));
+      };
+      worker.onerror = (event) => finish(null, new Error(event.message || "mesh worker failed"));
+      worker.postMessage({ layers });
+    });
+  }
 
-    for (const [polygonIndex, polygon] of polygons.entries()) {
-      if (polygon.points.length < 3) continue;
-      const contour = polygon.points.map(([x, y]) => new Vector2(x, y));
-      const builder = new PolygonMeshBuilder(`${objectId}-${polygonIndex}`, contour, scene, earcut);
-      for (const hole of polygon.holes ?? []) {
-        if (hole.length >= 3) builder.addHole(hole.map(([x, y]) => new Vector2(x, y)));
-      }
-
-      const polygonData = builder.buildVertexData(depth);
-      if (!polygonData.positions || !polygonData.indices) continue;
-      const vertexOffset = positions.length / 3;
-      appendValues(positions, polygonData.positions);
-      appendValues(normals, polygonData.normals);
-      appendValues(uvs, polygonData.uvs);
-      for (const index of polygonData.indices) indices.push(index + vertexOffset);
-    }
-
-    if (positions.length === 0 || indices.length === 0) return null;
-    const mesh = new Mesh(objectId, scene);
+  function createLayerMesh(data: WorkerLayerMesh) {
+    if (!scene || data.positions.length === 0 || data.indices.length === 0) return null;
+    const mesh = new Mesh(data.id, scene);
     const vertexData = new VertexData();
-    vertexData.positions = positions;
-    vertexData.normals = normals;
-    vertexData.uvs = uvs;
-    vertexData.indices = indices;
+    vertexData.positions = data.positions;
+    vertexData.normals = data.normals;
+    vertexData.indices = data.indices;
     vertexData.applyToMesh(mesh, false);
     return mesh;
   }
 
-  function synchronizeObjects(sceneObjects: unknown[], forceRebuild = false) {
+  function clonePolygonsForWorker(
+    polygons: { points: number[][]; holes?: number[][][] }[],
+  ): { points: number[][]; holes?: number[][][] }[] {
+    return polygons.map((polygon) => ({
+      points: polygon.points.map((point) => [point[0], point[1]]),
+      holes: polygon.holes?.map((hole) => hole.map((point) => [point[0], point[1]])),
+    }));
+  }
+
+  async function synchronizeObjects(sceneObjects: unknown[], forceRebuild = false) {
     if (!scene) return;
     const records = sceneObjects
       .map((entry) => entry as ViewportRecord)
@@ -268,6 +295,9 @@
     const geometryChanged = forceRebuild || renderedIds !== renderedObjectIds;
     if (!geometryChanged) return;
 
+    const generation = ++meshBuildGeneration;
+    const buildResetKey = resetKey;
+    cancelActiveMeshBuild();
     renderedObjectIds = renderedIds;
     if (forceRebuild) clearMeshes();
     const currentIds = new Set(records.map((record) => record.payload?.id ?? ""));
@@ -277,16 +307,16 @@
       renderedLayers.delete(id);
       meshes = meshes.filter((mesh) => mesh !== rendered.mesh);
     }
-    for (const record of records) {
+
+    const pendingRecords = records.filter(
+      (record) => record.payload?.id && !renderedLayers.has(record.payload.id),
+    );
+    const workerLayers = pendingRecords.map((record) => {
       const payload = record.payload;
-      if (!payload?.id || renderedLayers.has(payload.id)) continue;
-      const material = new StandardMaterial(`${payload.id}-material`, scene);
-      material.specularColor = new Color3(0.06, 0.06, 0.06);
-      material.alpha = 1;
-      material.backFaceCulling = false;
+      const id = payload?.id ?? "";
       const polygons =
-        payload.polygons ??
-        (payload.bounds
+        payload?.polygons ??
+        (payload?.bounds
           ? [
               {
                 points: [
@@ -298,25 +328,64 @@
               },
             ]
           : []);
-      const depth = Math.max(0.001, (payload.display?.z_max ?? 1) - (payload.display?.z_min ?? 0));
-      const mesh = buildLayerMesh(payload.id, polygons, depth);
+      const depth = Math.max(
+        0.001,
+        (payload?.display?.z_max ?? 1) - (payload?.display?.z_min ?? 0),
+      );
+      return { id, polygons: clonePolygonsForWorker(polygons), depth };
+    });
+
+    if (workerLayers.length === 0) {
+      if (forceRebuild) fitCamera();
+      onMeshesReady?.(buildResetKey, renderedIds);
+      return;
+    }
+
+    let builtLayers: WorkerLayerMesh[] | null;
+    try {
+      builtLayers = await buildMeshesInWorker(workerLayers);
+    } catch (reason) {
+      if (generation === meshBuildGeneration) onMeshesError?.(buildResetKey, reason);
+      return;
+    }
+    if (!builtLayers || generation !== meshBuildGeneration || !scene) return;
+
+    const recordsById = new Map(
+      pendingRecords
+        .filter((record) => record.payload?.id)
+        .map((record) => [record.payload?.id ?? "", record] as const),
+    );
+    const depthsById = new Map(workerLayers.map(({ id, depth }) => [id, depth] as const));
+    for (const [layerIndex, layer] of builtLayers.entries()) {
+      if (generation !== meshBuildGeneration || !scene) return;
+      const record = recordsById.get(layer.id);
+      if (!record) continue;
+      const material = new StandardMaterial(`${layer.id}-material`, scene);
+      material.specularColor = new Color3(0.06, 0.06, 0.06);
+      material.alpha = 1;
+      material.backFaceCulling = false;
+      const mesh = createLayerMesh(layer);
       if (!mesh) {
         material.dispose();
         continue;
       }
       mesh.material = material;
-      mesh.metadata = { objectId: payload.id };
+      mesh.metadata = { objectId: layer.id };
       meshes.push(mesh);
       const rendered = {
         mesh,
         material,
-        baseDepth: depth,
+        baseDepth: depthsById.get(layer.id) ?? 1,
         appearance: appearanceFromRecord(record),
       };
-      renderedLayers.set(payload.id, rendered);
+      renderedLayers.set(layer.id, rendered);
       updateLayerAppearance(record, rendered);
+      if (layerIndex + 1 < builtLayers.length) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
     }
     if (forceRebuild) fitCamera();
+    onMeshesReady?.(buildResetKey, renderedIds);
   }
 
   function fitCamera() {
@@ -486,7 +555,7 @@
       onSelect?.(id ?? null);
     });
     renderedResetKey = resetKey;
-    synchronizeObjects(objects, true);
+    void synchronizeObjects(objects, true);
     viewportEngine.runRenderLoop(() => {
       if (!resizePaused) scene?.render();
     });
@@ -515,6 +584,8 @@
       scene?.onBeforeRenderObservable.remove(panningObserver);
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
       stopCameraAnimation();
+      meshBuildGeneration += 1;
+      cancelActiveMeshBuild();
       requestEngineResize = null;
       clearMeshes();
       ambientLight?.dispose();
@@ -532,7 +603,7 @@
     void objectIds;
     const forceFit = resetKey !== renderedResetKey;
     renderedResetKey = resetKey;
-    synchronizeObjects(
+    void synchronizeObjects(
       untrack(() => objects),
       forceFit,
     );

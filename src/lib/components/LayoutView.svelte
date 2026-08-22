@@ -5,6 +5,7 @@
     chooseGdsPath,
     chooseProjectPath,
     chooseProjectSavePath,
+    clearScene,
     createBaseplate,
     deleteSceneObject,
     getSceneSnapshot,
@@ -19,6 +20,7 @@
     type SceneSnapshot,
   } from "@api/gds";
   import { t } from "@i18n";
+  import { showToast } from "../toast";
   import Button from "./ui/Button.svelte";
   import ColorPicker from "./ui/ColorPicker.svelte";
   import Dialog from "./ui/Dialog.svelte";
@@ -85,6 +87,13 @@
     update: DisplayPatch;
   };
 
+  type ViewportMeshWaiter = {
+    resetKey: number;
+    objectIds: string;
+    resolve: () => void;
+    reject: (reason: unknown) => void;
+  };
+
   type ResizablePanel = "layers" | "properties";
   type ContextMenu =
     | { kind: "blank"; x: number; y: number }
@@ -103,7 +112,6 @@
   let sceneRevision = $state(0);
   let selectedId = $state<string | null>(null);
   let busy = $state(false);
-  let error = $state<string | null>(null);
   let importCandidate = $state<GdsFileInfo | null>(null);
   let collapsedGroups = $state<string[]>([]);
   let workbench = $state<HTMLDivElement | null>(null);
@@ -131,6 +139,9 @@
   let resizeStartWidth = 0;
   const pendingDisplayUpdates = new Map<string, DisplayPatch>();
   let displayUpdateTimer: number | undefined;
+  let viewportMeshWaiter: ViewportMeshWaiter | null = null;
+  let readyViewportResetKey = -1;
+  let readyViewportObjectIds = "";
   let selected = $derived(
     scene?.objects.find((entry) => (entry as Entry).payload?.id === selectedId) as
       | Entry
@@ -169,6 +180,45 @@
       .map((entry) => entry as Entry)
       .find((entry) => entry.kind === "GdsLayer" && entry.payload?.id);
     return firstLayer?.payload?.id ?? null;
+  }
+
+  function snapshotObjectIds(snapshot: SceneSnapshot): string {
+    return snapshot.objects
+      .map((entry) => (entry as Entry).payload?.id ?? "")
+      .filter(Boolean)
+      .join("|");
+  }
+
+  function errorMessage(reason: unknown): string {
+    return reason instanceof Error ? reason.message : String(reason);
+  }
+
+  function waitForViewportMeshes(resetKey: number, objectIds: string): Promise<void> {
+    if (readyViewportResetKey === resetKey && readyViewportObjectIds === objectIds) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      viewportMeshWaiter = { resetKey, objectIds, resolve, reject };
+    });
+  }
+
+  function handleViewportMeshesReady(resetKey: number, objectIds: string) {
+    readyViewportResetKey = resetKey;
+    readyViewportObjectIds = objectIds;
+    const waiter = viewportMeshWaiter;
+    if (!waiter || waiter.resetKey !== resetKey || waiter.objectIds !== objectIds) return;
+    viewportMeshWaiter = null;
+    waiter.resolve();
+  }
+
+  function handleViewportMeshesError(resetKey: number, reason: unknown) {
+    const waiter = viewportMeshWaiter;
+    if (!waiter || waiter.resetKey !== resetKey) {
+      showToast(errorMessage(reason), "error");
+      return;
+    }
+    viewportMeshWaiter = null;
+    waiter.reject(reason);
   }
 
   function panelWidthLimit(panel: ResizablePanel): number {
@@ -337,6 +387,7 @@
 
   function patchLocalDisplay(objectIds: string[], update: DisplayPatch) {
     if (!scene) return;
+    const selectedIds = new Set(objectIds);
     for (const objectId of objectIds) {
       window.dispatchEvent(
         new CustomEvent<ViewportDisplayEvent>("gds3d-viewport-display", {
@@ -344,22 +395,14 @@
         }),
       );
     }
-    const selectedIds = new Set(objectIds);
-    scene = {
-      ...scene,
-      revision: scene.revision + 1,
-      objects: scene.objects.map((entry) => {
-        const object = entry as Entry;
-        if (!object.payload?.id || !selectedIds.has(object.payload.id)) return entry;
-        return {
-          ...object,
-          payload: {
-            ...object.payload,
-            display: { ...object.payload.display, ...update },
-          },
-        };
-      }),
-    };
+    for (const entry of scene.objects) {
+      const object = entry as Entry;
+      if (!object.payload?.id || !selectedIds.has(object.payload.id) || !object.payload.display) {
+        continue;
+      }
+      Object.assign(object.payload.display, update);
+    }
+    scene.revision += 1;
   }
 
   function scheduleDisplayUpdate(id: string, update: DisplayPatch) {
@@ -389,7 +432,7 @@
         ),
       );
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
+      showToast(errorMessage(reason), "error");
     }
   }
 
@@ -402,7 +445,7 @@
     try {
       await setObjectsVisibility(objectIds, visible);
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
+      showToast(errorMessage(reason), "error");
     }
   }
 
@@ -417,6 +460,9 @@
           break;
         case "saveProject":
           void saveCurrentProject();
+          break;
+        case "closeProject":
+          void closeProject();
           break;
         case "resetCamera":
           resetCamera();
@@ -447,15 +493,20 @@
   });
 
   onDestroy(() => {
+    viewportMeshWaiter?.reject(new Error("viewport was destroyed"));
+    viewportMeshWaiter = null;
     void flushDisplayUpdates();
   });
 
   async function chooseGds() {
     const path = await chooseGdsPath();
     if (!path) return;
-    await run(async () => {
-      importCandidate = await inspectGdsFile(path);
-    });
+    await run(
+      async () => {
+        importCandidate = await inspectGdsFile(path);
+      },
+      (reason) => t("gds.importFailed", { message: errorMessage(reason) }),
+    );
   }
 
   async function confirmImport(selections: GdsLayerSelection[]) {
@@ -466,27 +517,30 @@
       scene = importedScene;
       selectedId = firstLayerId(importedScene);
       sceneRevision += 1;
+      const meshesReady = waitForViewportMeshes(
+        sceneRevision,
+        snapshotObjectIds(importedScene),
+      );
       await tick();
-      await waitForViewportPaint();
-      await new Promise((resolve) => window.setTimeout(resolve, 500));
+      await meshesReady;
       importCandidate = null;
-    });
-  }
-
-  function waitForViewportPaint(): Promise<void> {
-    return new Promise((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-    });
+      showToast(t("gds.importSuccess"), "success");
+    }, (reason) => t("gds.importFailed", { message: errorMessage(reason) }));
   }
 
   async function openProject() {
     const path = await chooseProjectPath();
     if (!path) return;
     await run(async () => {
-      scene = await loadProject(path);
+      const loadedScene = await loadProject(path);
+      scene = loadedScene;
       sceneRevision += 1;
       selectedId = null;
-    });
+      const meshesReady = waitForViewportMeshes(sceneRevision, snapshotObjectIds(loadedScene));
+      await tick();
+      await meshesReady;
+      showToast(t("gds.projectOpenSuccess"), "success");
+    }, (reason) => t("gds.projectOpenFailed", { message: errorMessage(reason) }));
   }
 
   async function saveCurrentProject() {
@@ -494,16 +548,48 @@
     const path = await chooseProjectSavePath();
     if (!path) return;
     await flushDisplayUpdates();
-    await run(() => saveProject(path));
+    await run(
+      async () => {
+        await saveProject(path);
+        showToast(t("gds.projectSaveSuccess"), "success");
+      },
+      (reason) => t("gds.projectSaveFailed", { message: errorMessage(reason) }),
+    );
   }
 
-  async function run(action: () => Promise<unknown>) {
+  async function closeProject() {
+    await flushDisplayUpdates();
+    await run(
+      async () => {
+        const clearedScene = await clearScene();
+        scene = clearedScene;
+        selectedId = null;
+        importCandidate = null;
+        collapsedGroups = [];
+        closeContextMenu();
+        renameOpen = false;
+        sceneRevision += 1;
+        const meshesReady = waitForViewportMeshes(
+          sceneRevision,
+          snapshotObjectIds(clearedScene),
+        );
+        await tick();
+        await meshesReady;
+        showToast(t("gds.closeProjectSuccess"), "success");
+      },
+      (reason) => t("gds.closeProjectFailed", { message: errorMessage(reason) }),
+    );
+  }
+
+  async function run(
+    action: () => Promise<unknown>,
+    failureMessage: (reason: unknown) => string = errorMessage,
+  ) {
     busy = true;
-    error = null;
     try {
       await action();
     } catch (reason) {
-      error = reason instanceof Error ? reason.message : String(reason);
+      showToast(failureMessage(reason), "error");
     } finally {
       busy = false;
     }
@@ -685,6 +771,8 @@
           resetKey={sceneRevision}
           resizePaused={resizingPanel !== null || !active}
           onSelect={(id) => (selectedId = id)}
+          onMeshesReady={handleViewportMeshesReady}
+          onMeshesError={handleViewportMeshesError}
         />{:else}<div class="viewport-empty">
           <FolderOpen size={32} /><strong>{t("gds.openLayout")}</strong><span
             >{t("gds.sceneAppearsHere")}</span
@@ -884,8 +972,6 @@
     </aside>
   </div>
 </div>
-{#if error}<div class="layout-error">{error}</div>{/if}
-
 {#if importCandidate}
   <ImportDialog
     info={importCandidate}
@@ -1306,17 +1392,5 @@
   }
   .empty {
     line-height: 1.55;
-  }
-  .layout-error {
-    position: fixed;
-    right: 18px;
-    bottom: 18px;
-    z-index: 200;
-    max-width: 520px;
-    padding: 12px 16px;
-    border-radius: var(--gds-radius-md);
-    color: white;
-    background: var(--danger);
-    box-shadow: var(--shadow);
   }
 </style>

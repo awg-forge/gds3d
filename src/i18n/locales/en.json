@@ -29,7 +29,7 @@
     "mousePan": "Pan view",
     "mouseZoom": "Zoom view",
     "mouseLeftClick": "Left click",
-    "mouseMiddleDrag": "Middle drag",
+    "mouseLeftDrag": "Left drag",
     "mouseRightDrag": "Right drag",
     "mouseWheel": "Mouse wheel",
     "about": "About",

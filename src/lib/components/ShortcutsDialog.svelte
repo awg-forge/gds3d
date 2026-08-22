@@ -6,8 +6,8 @@
 
   const mouseControls = [
     { action: "gds.mouseSelect", input: "gds.mouseLeftClick" },
-    { action: "gds.mouseRotate", input: "gds.mouseRightDrag" },
-    { action: "gds.mousePan", input: "gds.mouseMiddleDrag" },
+    { action: "gds.mouseRotate", input: "gds.mouseLeftDrag" },
+    { action: "gds.mousePan", input: "gds.mouseRightDrag" },
     { action: "gds.mouseZoom", input: "gds.mouseWheel" },
   ] as const;
 </script>

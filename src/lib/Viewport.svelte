@@ -765,11 +765,11 @@
     });
     activeCamera.inputs.removeByType("ArcRotateCameraPointersInput");
     const pointerInput = new ArcRotateCameraPointersInput();
-    pointerInput.buttons = [1, 2];
+    pointerInput.buttons = [0, 2];
     activeCamera.inputs.add(pointerInput);
     activeCamera.attachControl(false, false, -1);
-    activeCamera.movement.input.setInteraction("pointer", { button: 1 }, "pan");
-    activeCamera.movement.input.setInteraction("pointer", { button: 2 }, "rotate");
+    activeCamera.movement.input.setInteraction("pointer", { button: 0 }, "rotate");
+    activeCamera.movement.input.setInteraction("pointer", { button: 2 }, "pan");
     activeCamera.wheelDeltaPercentage = 0.01;
     activeCamera.panningSensibility = homePanningSensibility;
     activeCamera.lowerRadiusLimit = 0.01;
@@ -778,12 +778,12 @@
     viewportCanvas.addEventListener("wheel", preventPageZoom, { passive: false });
     viewportCanvas.addEventListener("pointerdown", stopCameraAnimation);
     const startSelection = (event: PointerEvent) => {
-      if (event.button === 1) panDragging = true;
+      if (event.button === 2) panDragging = true;
       if (event.button !== 0) return;
       selectionPointerStart = { x: event.clientX, y: event.clientY };
     };
     const finishSelection = (event: PointerEvent) => {
-      if (event.button === 1) panDragging = false;
+      if (event.button === 2) panDragging = false;
       if (event.button !== 0 || !selectionPointerStart) return;
       const movement = Math.hypot(
         event.clientX - selectionPointerStart.x,

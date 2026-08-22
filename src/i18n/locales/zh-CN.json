@@ -29,7 +29,7 @@
     "mousePan": "平移视角",
     "mouseZoom": "缩放视角",
     "mouseLeftClick": "左键单击",
-    "mouseMiddleDrag": "中键拖动",
+    "mouseLeftDrag": "左键拖动",
     "mouseRightDrag": "右键拖动",
     "mouseWheel": "滚轮",
     "about": "关于",

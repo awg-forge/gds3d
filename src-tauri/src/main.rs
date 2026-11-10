@@ -364,6 +364,8 @@ struct DisplayUpdate {
     color: Option<String>,
     opacity: Option<f32>,
     visible: Option<bool>,
+    offset_x: Option<f32>,
+    offset_y: Option<f32>,
     z_min: Option<f32>,
     z_max: Option<f32>,
 }
@@ -521,6 +523,12 @@ fn update_object_display(
     }
     if let Some(visible) = update.visible {
         after.visible = visible;
+    }
+    if let Some(offset_x) = update.offset_x {
+        after.offset_x = offset_x;
+    }
+    if let Some(offset_y) = update.offset_y {
+        after.offset_y = offset_y;
     }
     if update.z_min.is_some() {
         after.z_min = z_min;

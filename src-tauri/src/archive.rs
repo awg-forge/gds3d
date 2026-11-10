@@ -715,8 +715,12 @@ mod tests {
             .and_then(|cell| cell.layers.first())
             .map(|layer| layer.selection.clone())
             .expect("sample GDS layer selection");
-        let document =
+        let mut document =
             ProjectDocument::from_gds(gds_path, &[selection]).expect("import project document");
+        for layer in document.layer_views.values_mut() {
+            layer.display.offset_x = 12.5;
+            layer.display.offset_y = -7.25;
+        }
         let mut expected_cell_ids = document.cells.keys().copied().collect::<Vec<_>>();
         expected_cell_ids.sort_by_key(|id| id.0);
         let mut expected_shape_ids = document.source_map.keys().copied().collect::<Vec<_>>();
@@ -732,6 +736,12 @@ mod tests {
         assert_eq!(loaded_cell_ids, expected_cell_ids);
         assert_eq!(loaded_shape_ids, expected_shape_ids);
         assert_eq!(loaded.layer_views.len(), document.layer_views.len());
+        assert!(
+            loaded
+                .layer_views
+                .values()
+                .all(|layer| layer.display.offset_x == 12.5 && layer.display.offset_y == -7.25)
+        );
         assert_eq!(
             loaded
                 .compile_render_scene()

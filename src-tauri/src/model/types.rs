@@ -198,6 +198,10 @@ pub struct DisplayProperties {
     pub color: String,
     #[serde(default = "default_opacity")]
     pub opacity: f32,
+    #[serde(default)]
+    pub offset_x: f32,
+    #[serde(default)]
+    pub offset_y: f32,
     pub z_min: f32,
     pub z_max: f32,
     #[serde(default)]
@@ -210,6 +214,10 @@ pub struct DisplayDefaults {
     pub color: String,
     #[serde(default = "default_opacity")]
     pub opacity: f32,
+    #[serde(default)]
+    pub offset_x: f32,
+    #[serde(default)]
+    pub offset_y: f32,
     pub z_min: f32,
     pub z_max: f32,
 }
@@ -224,6 +232,8 @@ impl DisplayProperties {
             name: self.name.clone(),
             color: self.color.clone(),
             opacity: self.opacity,
+            offset_x: self.offset_x,
+            offset_y: self.offset_y,
             z_min: self.z_min,
             z_max: self.z_max,
         }
@@ -236,6 +246,8 @@ impl DisplayProperties {
                 name: name.clone(),
                 color: "#2D6CDF".to_owned(),
                 opacity: 1.0,
+                offset_x: 0.0,
+                offset_y: 0.0,
                 z_min: 0.0,
                 z_max: 15.0,
             },
@@ -243,6 +255,8 @@ impl DisplayProperties {
             visible: true,
             color: "#2D6CDF".to_owned(),
             opacity: 1.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
             z_min: 0.0,
             z_max: 15.0,
         }
@@ -255,6 +269,8 @@ impl DisplayProperties {
                 name: name.clone(),
                 color: "#5F6B78".to_owned(),
                 opacity: 1.0,
+                offset_x: 0.0,
+                offset_y: 0.0,
                 z_min: -15.0,
                 z_max: 0.0,
             },
@@ -262,6 +278,8 @@ impl DisplayProperties {
             visible: true,
             color: "#5F6B78".to_owned(),
             opacity: 1.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
             z_min: -15.0,
             z_max: 0.0,
         }

@@ -45,6 +45,8 @@
         color?: string;
         opacity?: number;
         visible?: boolean;
+        offset_x?: number;
+        offset_y?: number;
         z_min?: number;
         z_max?: number;
       };
@@ -66,6 +68,8 @@
     color: string;
     opacity: number;
     visible: boolean;
+    offsetX: number;
+    offsetY: number;
     zMin: number;
     zMax: number;
   };
@@ -75,6 +79,8 @@
       color?: string;
       opacity?: number;
       visible?: boolean;
+      offset_x?: number;
+      offset_y?: number;
       z_min?: number;
       z_max?: number;
     };
@@ -219,13 +225,23 @@
       color: display?.color ?? "#4c89c8",
       opacity: display?.opacity ?? 1,
       visible: display?.visible ?? true,
+      offsetX: display?.offset_x ?? 0,
+      offsetY: display?.offset_y ?? 0,
       zMin: display?.z_min ?? 0,
       zMax: display?.z_max ?? 1,
     };
   }
 
   function applyLayerAppearance(rendered: RenderedLayer) {
-    const { color: colorValue, opacity, visible, zMin, zMax } = rendered.appearance;
+    const {
+      color: colorValue,
+      opacity,
+      visible,
+      offsetX,
+      offsetY,
+      zMin,
+      zMax,
+    } = rendered.appearance;
     const color = Color3.FromHexString(colorValue);
     rendered.material.diffuseColor = color;
     rendered.material.emissiveColor = Color3.Black();
@@ -237,8 +253,8 @@
     rendered.mesh.setEnabled(visible);
     const depth = Math.max(0.001, zMax - zMin);
     rendered.mesh.scaling.y = depth / rendered.baseDepth;
-    // Worker meshes extend down from local Y=0, so their top belongs at zMax.
-    rendered.mesh.position.y = zMax;
+    // GDS Y maps to world Z; worker meshes extend down from local Y=0, so their top belongs at zMax.
+    rendered.mesh.position.set(offsetX, zMax, offsetY);
   }
 
   function updateLayerAppearance(record: ViewportRecord, rendered: RenderedLayer) {
@@ -256,6 +272,8 @@
       color: update.color ?? rendered.appearance.color,
       opacity: update.opacity ?? rendered.appearance.opacity,
       visible: update.visible ?? rendered.appearance.visible,
+      offsetX: update.offset_x ?? rendered.appearance.offsetX,
+      offsetY: update.offset_y ?? rendered.appearance.offsetY,
       zMin: update.z_min ?? rendered.appearance.zMin,
       zMax: update.z_max ?? rendered.appearance.zMax,
     };

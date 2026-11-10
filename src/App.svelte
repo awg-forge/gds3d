@@ -13,6 +13,7 @@
     startWindowDragging,
     toggleMaximize,
   } from "@api/window";
+  import { openManual } from "@api/app";
   import { updateTrayLocale } from "@api/desktop";
   import type { EditorStatus } from "@api/gds";
   import { locale, setLocale, t } from "@i18n";
@@ -26,6 +27,7 @@
   import ShortcutsDialog from "./lib/components/ShortcutsDialog.svelte";
   import SplashScreen from "./lib/components/SplashScreen.svelte";
   import Toast from "./lib/components/ui/Toast.svelte";
+  import { showToast } from "./lib/toast";
 
   type View = "layout" | "settings";
   type ThemeMode = "light" | "dark";
@@ -315,6 +317,11 @@
     shortcutsOpen = true;
   }
 
+  function openUserManual() {
+    openMenu = null;
+    void openManual().catch(() => showToast(t("gds.openManualFailed"), "error"));
+  }
+
   function handleTitlebarMouseDown(event: MouseEvent) {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
@@ -463,6 +470,7 @@
           >
           {#if openMenu === "help"}
             <div class="app-menu" role="menu">
+              <button role="menuitem" onclick={openUserManual}>{t("gds.openManual")}</button>
               <button role="menuitem" onclick={openShortcuts}>{t("gds.shortcuts")}</button>
               <div class="menu-separator"></div>
               <button role="menuitem" onclick={openAbout}>{t("gds.about")}</button>

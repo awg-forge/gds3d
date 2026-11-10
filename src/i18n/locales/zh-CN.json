@@ -23,6 +23,8 @@
     "windowMaximize": "最大化",
     "windowClose": "关闭窗口",
     "shortcuts": "快捷键",
+    "openManual": "用户手册",
+    "openManualFailed": "无法打开用户手册",
     "mouseControls": "鼠标操作",
     "mouseSelect": "选择对象",
     "mouseRotate": "旋转视角",

@@ -678,6 +678,25 @@ fn update_desktop_preferences(
 }
 
 #[tauri::command]
+fn open_manual(app: AppHandle) -> Result<(), String> {
+    let filename = "gds3d-user-manual.pdf";
+    let exe_path = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|directory| directory.join(filename)));
+    let resource_path = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|directory| directory.join(filename));
+    let path = exe_path
+        .into_iter()
+        .chain(resource_path)
+        .find(|path| path.is_file())
+        .ok_or_else(|| format!("{filename} not found"))?;
+    opener::open(path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn get_system_fonts() -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(|| {
         SYSTEM_FONTS
@@ -849,6 +868,7 @@ fn main() {
             update_desktop_preferences,
             update_tray_locale,
             get_system_fonts,
+            open_manual,
         ])
         .build(tauri::generate_context!())
         .expect("error while building gds3d")

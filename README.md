@@ -6,6 +6,10 @@ gds3d imports GDS files, lets you inspect layout layers in an interactive 3D vie
 
 <img src="assets/image.png" alt="gds3d workspace" width="960">
 
+## User manual
+
+[English / 中文 PDF](docs/gds3d-user-manual.pdf)
+
 ## Develop
 
 Install the following prerequisites:

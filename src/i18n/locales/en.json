@@ -23,6 +23,8 @@
     "windowMaximize": "Maximize",
     "windowClose": "Close window",
     "shortcuts": "Shortcuts",
+    "openManual": "User manual",
+    "openManualFailed": "Failed to open the user manual",
     "mouseControls": "Mouse",
     "mouseSelect": "Select object",
     "mouseRotate": "Rotate view",

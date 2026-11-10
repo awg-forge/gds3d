@@ -86,6 +86,13 @@ jobs:
                 run.head_branch === 'main'
               );
 
+              if (runs.length === 0) {
+                core.warning(
+                  `No ${requiredWorkflowName} run was ever triggered for ${headSha}; skipping verification`
+                );
+                return;
+              }
+
               if (runs.some((run) => run.status === 'completed' && run.conclusion === 'success')) {
                 core.info(`Commit ${headSha} passed ${requiredWorkflowName}`);
                 return;

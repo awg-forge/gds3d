@@ -7,13 +7,13 @@
     disabled = false,
     ariaLabel,
     oncheckedchange,
-  } = $props<{
+  }: {
     checked?: boolean;
     indeterminate?: boolean;
     disabled?: boolean;
     ariaLabel?: string;
     oncheckedchange?: (checked: boolean) => void;
-  }>();
+  } = $props();
 
   let input = $state<HTMLInputElement>();
 

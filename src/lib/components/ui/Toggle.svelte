@@ -4,12 +4,12 @@
     disabled = false,
     oncheckedchange,
     label = "Toggle",
-  } = $props<{
+  }: {
     checked?: boolean;
     disabled?: boolean;
     oncheckedchange?: (checked: boolean) => void;
     label?: string;
-  }>();
+  } = $props();
   function toggle(): void {
     checked = !checked;
     oncheckedchange?.(checked);

@@ -6,12 +6,12 @@
     label,
     disabled = false,
     onvaluechange,
-  } = $props<{
+  }: {
     value: string;
     label: string;
     disabled?: boolean;
     onvaluechange: (value: string) => void;
-  }>();
+  } = $props();
 
   const swatches = [
     "#ffffff",

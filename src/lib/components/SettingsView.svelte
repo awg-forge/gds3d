@@ -7,13 +7,19 @@
   import Slider from "./ui/Slider.svelte";
   import Toggle from "./ui/Toggle.svelte";
 
-  let { fontSize, fontFamily, lightingIntensity, ontypographychange, onlightingchange } = $props<{
+  let {
+    fontSize,
+    fontFamily,
+    lightingIntensity,
+    ontypographychange,
+    onlightingchange,
+  }: {
     fontSize: number;
     fontFamily: string;
     lightingIntensity: number;
     ontypographychange: (value: { fontSize?: number; fontFamily?: string }) => void;
     onlightingchange: (value: number) => void;
-  }>();
+  } = $props();
 
   let fonts = $state<string[]>([]);
   const fontOptions = $derived([

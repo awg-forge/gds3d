@@ -8,7 +8,7 @@
     ariaLabel,
     ariaValueText,
     onvaluechange,
-  } = $props<{
+  }: {
     value: number;
     min?: number;
     max?: number;
@@ -17,7 +17,7 @@
     ariaLabel?: string;
     ariaValueText?: string;
     onvaluechange?: (value: number) => number | void;
-  }>();
+  } = $props();
 
   let input = $state<HTMLInputElement>();
   const progress = $derived(`${Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100))}%`);

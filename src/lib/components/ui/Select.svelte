@@ -27,7 +27,7 @@
     portal = true,
     glass = false,
     onValueChange,
-  } = $props<{
+  }: {
     value?: string | number;
     options: Option[];
     placeholder?: string;
@@ -39,7 +39,7 @@
     portal?: boolean;
     glass?: boolean;
     onValueChange?: (value: string, origin?: PointerOrigin) => void;
-  }>();
+  } = $props();
   const normalized: NormalizedOption[] = $derived(
     options.map((item: Option) => ({ ...item, value: String(item.value) })),
   );

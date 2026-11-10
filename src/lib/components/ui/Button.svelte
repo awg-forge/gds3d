@@ -10,7 +10,7 @@
     onclick,
     title,
     children,
-  } = $props<{
+  }: {
     variant?: "solid" | "outline" | "ghost" | "danger";
     size?: "sm" | "md" | "lg";
     loading?: boolean;
@@ -20,7 +20,7 @@
     onclick?: (event: MouseEvent) => void;
     title?: string;
     children: import("svelte").Snippet;
-  }>();
+  } = $props();
 </script>
 
 <button

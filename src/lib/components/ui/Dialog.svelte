@@ -9,7 +9,7 @@
     width = "480px",
     children,
     footer,
-  } = $props<{
+  }: {
     open?: boolean;
     title: string;
     closeLabel?: string;
@@ -17,7 +17,7 @@
     width?: string;
     children: import("svelte").Snippet;
     footer?: import("svelte").Snippet;
-  }>();
+  } = $props();
 
   function preventImplicitClose(event: { preventDefault: () => void }): void {
     event.preventDefault();

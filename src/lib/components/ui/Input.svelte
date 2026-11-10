@@ -10,7 +10,7 @@
     onchange,
     onkeydown,
     ...rest
-  } = $props<{
+  }: {
     value?: string | number;
     type?: string;
     placeholder?: string;
@@ -21,7 +21,7 @@
     onchange?: (event: Event & { currentTarget: HTMLInputElement }) => void;
     onkeydown?: (event: KeyboardEvent) => void;
     [key: string]: unknown;
-  }>();
+  } = $props();
 </script>
 
 <input

@@ -5,11 +5,15 @@
   import Dialog from "./ui/Dialog.svelte";
   import Select from "./ui/Select.svelte";
 
-  let { busy, onexport, oncancel } = $props<{
+  let {
+    busy,
+    onexport,
+    oncancel,
+  }: {
     busy: boolean;
     onexport: (settings: ViewExportSettings) => Promise<void>;
     oncancel: () => void;
-  }>();
+  } = $props();
 
   let open = $state(true);
   let format = $state<ViewExportFormat>("png");

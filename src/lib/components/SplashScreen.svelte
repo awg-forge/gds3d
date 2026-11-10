@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { t } from "@i18n";
 
-  let { onready } = $props<{ onready: () => void }>();
+  let { onready }: { onready: () => void } = $props();
 
   const durationMs = 2000;
   const exitDurationMs = 280;

@@ -7,6 +7,7 @@
     id,
     ariaLabel,
     ariaValueText,
+    disabled = false,
     onvaluechange,
   }: {
     value: number;
@@ -16,6 +17,7 @@
     id?: string;
     ariaLabel?: string;
     ariaValueText?: string;
+    disabled?: boolean;
     onvaluechange?: (value: number) => number | void;
   } = $props();
 
@@ -41,6 +43,7 @@
   {max}
   {step}
   {value}
+  {disabled}
   style={`--slider-progress: ${progress}`}
   aria-label={ariaLabel}
   aria-valuetext={ariaValueText}

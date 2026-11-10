@@ -93,8 +93,17 @@
     );
   }
 
+  function formatValue(value: number): string {
+    return value.toFixed(5);
+  }
+
   function formatBounds(bounds: { min_x: number; min_y: number; max_x: number; max_y: number }) {
-    return `X ${bounds.min_x.toFixed(2)}–${bounds.max_x.toFixed(2)}, Y ${bounds.min_y.toFixed(2)}–${bounds.max_y.toFixed(2)}`;
+    return [
+      `X-Min: ${formatValue(bounds.min_x)}`,
+      `X-Max: ${formatValue(bounds.max_x)}`,
+      `Y-Min: ${formatValue(bounds.min_y)}`,
+      `Y-Max: ${formatValue(bounds.max_y)}`,
+    ].join(", ");
   }
 </script>
 
@@ -102,7 +111,7 @@
   bind:open={dialogOpen}
   title={t("gds.importGdsTitle")}
   closeLabel={t("gds.closeDialog")}
-  width="640px"
+  width="780px"
 >
   <div class="import-content">
     <p class="import-path" title={info.file_path}><span>{t("gds.path")}</span>{info.file_path}</p>
@@ -131,7 +140,6 @@
                   oncheckedchange={(checked) => toggleLayer(layer.selection, checked)}
                 />
                 <span class="layer-name">L{layer.selection.layer}/D{layer.selection.datatype}</span>
-                <small>{t("gds.polygonCount", { count: layer.polygon_count })}</small>
                 <small class="layer-bounds" title={formatBounds(layer.bounds)}
                   >{formatBounds(layer.bounds)}</small
                 >
@@ -196,7 +204,7 @@
     margin-left: 20px;
   }
   .layer-option {
-    grid-template-columns: 20px 72px 104px minmax(0, 1fr);
+    grid-template-columns: 20px 72px minmax(0, 1fr);
     gap: 7px;
     min-height: 34px;
     padding: 0 7px;
@@ -210,6 +218,8 @@
   }
   .layer-bounds {
     overflow: hidden;
+    font-size: 0.76rem;
+    font-variant-numeric: tabular-nums;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

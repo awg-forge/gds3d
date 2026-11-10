@@ -10,6 +10,13 @@ pub struct DisplayChange {
 }
 
 #[derive(Clone, Debug)]
+pub struct BoundsChange {
+    pub object_id: String,
+    pub before: Bounds2d,
+    pub after: Bounds2d,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) enum RemovedObject {
     Layer { index: usize, layer: LayerView },
     Baseplate { index: usize, baseplate: Baseplate },
@@ -17,8 +24,14 @@ pub(crate) enum RemovedObject {
 
 #[derive(Clone, Debug)]
 pub enum DocumentCommand {
-    SetDisplay(Vec<DisplayChange>),
-    AddBaseplate { index: usize, baseplate: Baseplate },
+    SetObject {
+        displays: Vec<DisplayChange>,
+        bounds: Vec<BoundsChange>,
+    },
+    AddBaseplate {
+        index: usize,
+        baseplate: Baseplate,
+    },
     RemoveObject(RemovedObject),
 }
 
@@ -68,7 +81,10 @@ impl DocumentCommand {
 
     fn apply(&self, document: &mut ProjectDocument) -> anyhow::Result<()> {
         match self {
-            Self::SetDisplay(changes) => set_displays(document, changes, false)?,
+            Self::SetObject { displays, bounds } => {
+                set_displays(document, displays, false)?;
+                set_bounds(document, bounds, false)?;
+            }
             Self::AddBaseplate { index, baseplate } => {
                 if document.baseplates.contains_key(&baseplate.id) {
                     anyhow::bail!("baseplate already exists");
@@ -96,7 +112,10 @@ impl DocumentCommand {
 
     fn undo(&self, document: &mut ProjectDocument) -> anyhow::Result<()> {
         match self {
-            Self::SetDisplay(changes) => set_displays(document, changes, true)?,
+            Self::SetObject { displays, bounds } => {
+                set_displays(document, displays, true)?;
+                set_bounds(document, bounds, true)?;
+            }
             Self::AddBaseplate { baseplate, .. } => {
                 if document.baseplates.shift_remove(&baseplate.id).is_none() {
                     anyhow::bail!("baseplate no longer exists");
@@ -138,6 +157,24 @@ fn set_displays(
             .display_mut(&change.object_id)
             .ok_or_else(|| anyhow::anyhow!("scene object not found: {}", change.object_id))?;
         *display = if restore_before {
+            change.before.clone()
+        } else {
+            change.after.clone()
+        };
+    }
+    Ok(())
+}
+
+fn set_bounds(
+    document: &mut ProjectDocument,
+    changes: &[BoundsChange],
+    restore_before: bool,
+) -> anyhow::Result<()> {
+    for change in changes {
+        let baseplate = document.baseplate_mut(&change.object_id).ok_or_else(|| {
+            anyhow::anyhow!("scene object is not a baseplate: {}", change.object_id)
+        })?;
+        baseplate.bounds = if restore_before {
             change.before.clone()
         } else {
             change.after.clone()
@@ -322,11 +359,14 @@ mod tests {
         history
             .execute(
                 &mut document,
-                DocumentCommand::SetDisplay(vec![DisplayChange {
-                    object_id: object_id.clone(),
-                    before: before.clone(),
-                    after: after.clone(),
-                }]),
+                DocumentCommand::SetObject {
+                    displays: vec![DisplayChange {
+                        object_id: object_id.clone(),
+                        before: before.clone(),
+                        after: after.clone(),
+                    }],
+                    bounds: Vec::new(),
+                },
             )
             .expect("change display");
         assert_eq!(
@@ -338,6 +378,51 @@ mod tests {
         assert_eq!(document.display_mut(&object_id).cloned(), Some(before));
         assert!(history.redo(&mut document).expect("redo display"));
         assert_eq!(document.display_mut(&object_id).cloned(), Some(after));
+    }
+
+    #[test]
+    fn restores_baseplate_bounds() {
+        let mut document = ProjectDocument::default();
+        let id = document.add_baseplate("Baseplate 1", bounds());
+        let object_id = format!("baseplate-{}", id.0);
+        let before = document
+            .baseplate_mut(&object_id)
+            .expect("baseplate")
+            .bounds
+            .clone();
+        let mut after = before.clone();
+        after.max_x += 2.0;
+
+        let mut history = CommandHistory::default();
+        history
+            .execute(
+                &mut document,
+                DocumentCommand::SetObject {
+                    displays: Vec::new(),
+                    bounds: vec![BoundsChange {
+                        object_id: object_id.clone(),
+                        before: before.clone(),
+                        after: after.clone(),
+                    }],
+                },
+            )
+            .expect("change bounds");
+        assert_eq!(
+            document
+                .baseplate_mut(&object_id)
+                .expect("baseplate")
+                .bounds,
+            after
+        );
+
+        assert!(history.undo(&mut document).expect("undo bounds"));
+        assert_eq!(
+            document
+                .baseplate_mut(&object_id)
+                .expect("baseplate")
+                .bounds,
+            before
+        );
     }
 
     #[test]
@@ -371,12 +456,12 @@ mod tests {
         let display = document.display_mut(&object_id).expect("baseplate display");
         display.color = "#123456".to_owned();
         display.opacity = 0.6;
-        display.offset.z = -20.0;
+        display.min_z = -20.0;
 
         let defaults = document.display_defaults();
         let saved = defaults.get(&object_id).expect("saved display defaults");
         assert_eq!(saved.color, "#123456");
         assert_eq!(saved.opacity, 0.6);
-        assert_eq!(saved.offset.z, -20.0);
+        assert_eq!(saved.min_z, -20.0);
     }
 }

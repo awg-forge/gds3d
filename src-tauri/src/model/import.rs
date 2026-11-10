@@ -1,15 +1,9 @@
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::archive::source_key_for_path;
-
-use super::gds::{LayerGeometry, LayerKey, parse_gds_layers};
-use super::render::{BaseplateObject, GdsLayerObject, SceneObject};
-use super::types::{Bounds2d, DisplayProperties, ProjectDocument};
+use super::gds::parse_gds_layers;
+use super::types::Bounds2d;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GdsFileInfo {
@@ -35,10 +29,6 @@ pub struct GdsLayerSelection {
     pub cell_name: String,
     pub layer: i32,
     pub datatype: i32,
-}
-
-pub fn new_object_id() -> String {
-    Uuid::new_v4().simple().to_string()
 }
 
 pub fn inspect_gds_file(path: &Path) -> anyhow::Result<GdsFileInfo> {
@@ -79,107 +69,13 @@ pub fn inspect_gds_file(path: &Path) -> anyhow::Result<GdsFileInfo> {
     })
 }
 
-pub fn import_gds_layers(path: &Path) -> anyhow::Result<Vec<SceneObject>> {
-    let parsed = parse_gds_layers(path)?;
-    objects_from_layers(path, parsed.flatten_display_layers()?)
-}
-
-pub fn import_gds_document(
-    path: &Path,
-    selections: &[GdsLayerSelection],
-) -> anyhow::Result<ProjectDocument> {
-    ProjectDocument::from_gds(path, selections)
-}
-
-pub fn import_gds_layer_selections(
-    path: &Path,
-    selections: &[GdsLayerSelection],
-) -> anyhow::Result<Vec<SceneObject>> {
-    if selections.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let parsed = parse_gds_layers(path)?;
-    let selected = selections.iter().cloned().collect::<HashSet<_>>();
-    let mut layers = IndexMap::new();
-    for cell_name in parsed.display_cells() {
-        layers.extend(parsed.flatten_cell_layers(&cell_name)?.into_iter().filter(
-            |(key, _geometry)| {
-                selected.contains(&GdsLayerSelection {
-                    cell_name: key.cell_name.clone(),
-                    layer: key.layer,
-                    datatype: key.datatype,
-                })
-            },
-        ));
-    }
-    objects_from_layers(path, layers)
-}
-
-fn objects_from_layers(
-    path: &Path,
-    layers: IndexMap<LayerKey, LayerGeometry>,
-) -> anyhow::Result<Vec<SceneObject>> {
-    let source_key = source_key_for_path(path);
-    let mut objects = Vec::new();
-    for (key, geometry) in layers {
-        objects.push(SceneObject::GdsLayer(GdsLayerObject {
-            id: new_object_id(),
-            display: DisplayProperties::gds_layer(format!("L{}/{}", key.layer, key.datatype)),
-            file_path: path.to_path_buf(),
-            source_path: path.to_path_buf(),
-            source_key: source_key.clone(),
-            cell_name: key.cell_name,
-            layer: key.layer,
-            datatype: key.datatype,
-            bounds: geometry.bounds,
-            polygons: geometry.polygons,
-        }));
-    }
-
-    if objects.is_empty() {
-        anyhow::bail!("no GDS boundary, path, or box geometry found");
-    }
-
-    Ok(objects)
-}
-
-pub fn new_baseplate(name: impl Into<String>, bounds: Bounds2d) -> SceneObject {
-    SceneObject::Baseplate(BaseplateObject {
-        id: new_object_id(),
-        display: DisplayProperties::baseplate(name),
-        default_bounds: Some(bounds.clone()),
-        bounds,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
-    use super::{
-        import_gds_document, import_gds_layers, inspect_gds_file, new_baseplate, new_object_id,
-    };
-    use crate::model::{
-        Bounds2d, CellKey, DisplayProperties, GdsLayerObject, Polygon2d, Scene, SceneObject,
-        Selection, union_layer_polygons,
-    };
-
-    #[test]
-    fn imports_gds_layers() {
-        let objects = import_gds_layers(Path::new("../models/AWG.gds")).expect("import sample GDS");
-        assert!(!objects.is_empty());
-        for obj in objects {
-            let SceneObject::GdsLayer(layer) = obj else {
-                panic!("expected GDS layer object");
-            };
-            assert!(!layer.cell_name.starts_with("$$$"));
-            assert!(!layer.polygons.is_empty());
-            assert!(layer.bounds.min_x < layer.bounds.max_x);
-            assert!(layer.bounds.min_y < layer.bounds.max_y);
-        }
-    }
+    use super::inspect_gds_file;
+    use crate::model::{Polygon2d, ProjectDocument, union_layer_polygons};
 
     #[test]
     fn document_import_preserves_shape_ownership_and_occurrences() {
@@ -193,7 +89,7 @@ mod tests {
             .map(|layer| layer.selection.clone())
             .expect("AWG layer selection");
 
-        let document = import_gds_document(path, &[selection]).expect("import document");
+        let document = ProjectDocument::from_gds(path, &[selection]).expect("import document");
         assert!(
             document.cells.len() > 1,
             "expected preserved cell definitions"
@@ -261,141 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn stable_baseplate_names() {
-        let mut scene = Scene::default();
-        assert_eq!(scene.next_baseplate_name(), "Baseplate 1");
-
-        let bounds = Bounds2d {
-            min_x: -1.0,
-            min_y: -1.0,
-            max_x: 1.0,
-            max_y: 1.0,
-        };
-        scene
-            .add(new_baseplate("Baseplate 1", bounds.clone()))
-            .expect("add first baseplate");
-        scene
-            .add(new_baseplate("Baseplate 3", bounds))
-            .expect("add third baseplate");
-
-        assert_eq!(scene.next_baseplate_name(), "Baseplate 2");
-    }
-
-    #[test]
-    fn bounds_from_cell_selection() {
-        let mut scene = Scene::default();
-        let file_path = PathBuf::from("models/test.gds");
-        scene
-            .add(test_gds_layer(
-                file_path.clone(),
-                "AWG",
-                Bounds2d {
-                    min_x: -10.0,
-                    min_y: -20.0,
-                    max_x: 30.0,
-                    max_y: 40.0,
-                },
-            ))
-            .expect("add selected cell layer");
-        scene
-            .add(test_gds_layer(
-                file_path.clone(),
-                "Other",
-                Bounds2d {
-                    min_x: -1000.0,
-                    min_y: -1000.0,
-                    max_x: 1000.0,
-                    max_y: 1000.0,
-                },
-            ))
-            .expect("add other cell layer");
-
-        let bounds = scene.default_baseplate_bounds(&Selection::Cell(CellKey {
-            file_path,
-            cell_name: "AWG".to_owned(),
-        }));
-
-        assert_eq!(
-            bounds,
-            Bounds2d {
-                min_x: -10.0,
-                min_y: -20.0,
-                max_x: 30.0,
-                max_y: 40.0,
-            }
-        );
-    }
-
-    #[test]
-    fn bounds_from_scene_selection() {
-        let mut scene = Scene::default();
-        scene
-            .add(test_gds_layer(
-                PathBuf::from("models/a.gds"),
-                "A",
-                Bounds2d {
-                    min_x: -1.0,
-                    min_y: -2.0,
-                    max_x: 3.0,
-                    max_y: 4.0,
-                },
-            ))
-            .expect("add first layer");
-        scene
-            .add(test_gds_layer(
-                PathBuf::from("models/b.gds"),
-                "B",
-                Bounds2d {
-                    min_x: -10.0,
-                    min_y: 5.0,
-                    max_x: 20.0,
-                    max_y: 30.0,
-                },
-            ))
-            .expect("add second layer");
-
-        let bounds = scene.default_baseplate_bounds(&Selection::Scene);
-
-        assert_eq!(
-            bounds,
-            Bounds2d {
-                min_x: -10.0,
-                min_y: -2.0,
-                max_x: 20.0,
-                max_y: 30.0,
-            }
-        );
-    }
-
-    #[test]
-    fn bounds_ignore_baseplates() {
-        let mut scene = Scene::default();
-        scene
-            .add(new_baseplate(
-                "Baseplate 1",
-                Bounds2d {
-                    min_x: -1000.0,
-                    min_y: -1000.0,
-                    max_x: 1000.0,
-                    max_y: 1000.0,
-                },
-            ))
-            .expect("add existing baseplate");
-
-        let bounds = scene.default_baseplate_bounds(&Selection::Scene);
-
-        assert_eq!(
-            bounds,
-            Bounds2d {
-                min_x: -100.0,
-                min_y: -100.0,
-                max_x: 100.0,
-                max_y: 100.0,
-            }
-        );
-    }
-
-    #[test]
     fn inspects_top_cells() {
         let info = inspect_gds_file(Path::new("../models/AWG_0.8nmCS_16CH_0nmOS.gds"))
             .expect("inspect sample GDS");
@@ -422,19 +183,6 @@ mod tests {
             layer.polygon_count, 1,
             "expected near-touching AWG geometry to collapse into one connected island"
         );
-
-        let objects = import_gds_layers(Path::new("../models/AWG_0.8nmCS_16CH_0nmOS.gds"))
-            .expect("import AWG regression model");
-        let imported_layer = objects
-            .iter()
-            .find_map(|object| match object {
-                SceneObject::GdsLayer(layer) if layer.layer == 4 && layer.datatype == 1 => {
-                    Some(layer)
-                }
-                _ => None,
-            })
-            .expect("imported AWG L4/1 layer");
-        assert_eq!(imported_layer.polygons.len(), 1);
     }
 
     #[test]
@@ -472,20 +220,5 @@ mod tests {
             ],
             holes: Vec::new(),
         }
-    }
-
-    fn test_gds_layer(file_path: PathBuf, cell_name: &str, bounds: Bounds2d) -> SceneObject {
-        SceneObject::GdsLayer(GdsLayerObject {
-            id: new_object_id(),
-            display: DisplayProperties::gds_layer("L4/1"),
-            file_path: file_path.clone(),
-            source_path: file_path,
-            source_key: String::new(),
-            cell_name: cell_name.to_owned(),
-            layer: 4,
-            datatype: 1,
-            bounds,
-            polygons: Vec::new(),
-        })
     }
 }

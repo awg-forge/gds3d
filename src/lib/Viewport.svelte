@@ -45,17 +45,24 @@
         color?: string;
         opacity?: number;
         visible?: boolean;
-        offset?: { x?: number; y?: number; z?: number };
-        thickness?: number;
+        min_z?: number;
+        max_z?: number;
       };
       polygons?: { points: number[][]; holes?: number[][][] }[];
-      bounds?: { min_x: number; min_y: number; max_x: number; max_y: number };
+      bounds?: Bounds2d;
     };
+  };
+  type Bounds2d = {
+    min_x: number;
+    min_y: number;
+    max_x: number;
+    max_y: number;
   };
   type RenderedLayer = {
     mesh: Mesh;
     material: StandardMaterial;
     baseDepth: number;
+    baseBounds: Bounds2d | undefined;
     appearance: LayerAppearance;
   };
   type ViewportPick = {
@@ -66,10 +73,9 @@
     color: string;
     opacity: number;
     visible: boolean;
-    offsetX: number;
-    offsetY: number;
-    offsetZ: number;
-    thickness: number;
+    minZ: number;
+    maxZ: number;
+    bounds: Bounds2d | undefined;
   };
   type ViewportDisplayEvent = {
     objectId: string;
@@ -77,8 +83,9 @@
       color?: string;
       opacity?: number;
       visible?: boolean;
-      offset?: { x?: number; y?: number; z?: number };
-      thickness?: number;
+      min_z?: number;
+      max_z?: number;
+      bounds?: Bounds2d;
     };
   };
   type WorkerLayerInput = {
@@ -221,23 +228,14 @@
       color: display?.color ?? "#4c89c8",
       opacity: display?.opacity ?? 1,
       visible: display?.visible ?? true,
-      offsetX: display?.offset?.x ?? 0,
-      offsetY: display?.offset?.y ?? 0,
-      offsetZ: display?.offset?.z ?? 0,
-      thickness: display?.thickness ?? 1,
+      minZ: display?.min_z ?? 0,
+      maxZ: display?.max_z ?? 15,
+      bounds: record.payload?.bounds,
     };
   }
 
   function applyLayerAppearance(rendered: RenderedLayer) {
-    const {
-      color: colorValue,
-      opacity,
-      visible,
-      offsetX,
-      offsetY,
-      offsetZ,
-      thickness,
-    } = rendered.appearance;
+    const { color: colorValue, opacity, visible, minZ, maxZ, bounds } = rendered.appearance;
     const color = Color3.FromHexString(colorValue);
     rendered.material.diffuseColor = color;
     rendered.material.emissiveColor = Color3.Black();
@@ -247,10 +245,26 @@
     rendered.material.needDepthPrePass = opacity < 1;
     rendered.mesh.renderingGroupId = opacity < 1 ? 1 : 0;
     rendered.mesh.setEnabled(visible);
-    const depth = Math.max(0.001, thickness);
+    const depth = Math.max(0.001, maxZ - minZ);
     rendered.mesh.scaling.y = depth / rendered.baseDepth;
-    // GDS Y maps to world Z; worker meshes extend down from local Y=0, so their top is offset.z + thickness.
-    rendered.mesh.position.set(offsetX, offsetZ + depth, offsetY);
+    // GDS Y maps to world Z; worker meshes extend down from local Y=0, so their top sits at max_z.
+    // Planar bounds edits only scale/translate the existing footprint; rebuilding the mesh per
+    // edit would flicker while the geometry worker catches up.
+    const base = rendered.baseBounds;
+    if (bounds && base) {
+      const scaleX = (bounds.max_x - bounds.min_x) / Math.max(base.max_x - base.min_x, 0.000001);
+      const scaleZ = (bounds.max_y - bounds.min_y) / Math.max(base.max_y - base.min_y, 0.000001);
+      rendered.mesh.scaling.x = scaleX;
+      rendered.mesh.scaling.z = scaleZ;
+      rendered.mesh.position.x = bounds.min_x - base.min_x * scaleX;
+      rendered.mesh.position.z = bounds.min_y - base.min_y * scaleZ;
+    } else {
+      rendered.mesh.scaling.x = 1;
+      rendered.mesh.scaling.z = 1;
+      rendered.mesh.position.x = 0;
+      rendered.mesh.position.z = 0;
+    }
+    rendered.mesh.position.y = maxZ;
   }
 
   function updateLayerAppearance(record: ViewportRecord, rendered: RenderedLayer) {
@@ -268,10 +282,9 @@
       color: update.color ?? rendered.appearance.color,
       opacity: update.opacity ?? rendered.appearance.opacity,
       visible: update.visible ?? rendered.appearance.visible,
-      offsetX: update.offset?.x ?? rendered.appearance.offsetX,
-      offsetY: update.offset?.y ?? rendered.appearance.offsetY,
-      offsetZ: update.offset?.z ?? rendered.appearance.offsetZ,
-      thickness: update.thickness ?? rendered.appearance.thickness,
+      minZ: update.min_z ?? rendered.appearance.minZ,
+      maxZ: update.max_z ?? rendered.appearance.maxZ,
+      bounds: update.bounds ?? rendered.appearance.bounds,
     };
     applyLayerAppearance(rendered);
   }
@@ -395,7 +408,9 @@
               },
             ]
           : []);
-      const depth = Math.max(0.001, payload?.display?.thickness ?? 1);
+      const minZ = payload?.display?.min_z ?? 0;
+      const maxZ = payload?.display?.max_z ?? 15;
+      const depth = Math.max(0.001, maxZ - minZ);
       return { id, polygons: clonePolygonsForWorker(polygons), depth };
     });
 
@@ -449,6 +464,7 @@
         mesh,
         material,
         baseDepth: depthsById.get(layer.id) ?? 1,
+        baseBounds: record.payload?.bounds,
         appearance: appearanceFromRecord(record),
       };
       renderedLayers.set(layer.id, rendered);

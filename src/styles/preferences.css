@@ -23,6 +23,10 @@
   line-height: 1.35;
 }
 
+.settings-slider:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .settings-slider {
   --slider-progress: 50%;
   width: 100%;

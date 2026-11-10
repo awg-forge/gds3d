@@ -358,22 +358,15 @@ struct RenderObjectOccurrences {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OffsetUpdate {
-    x: Option<f32>,
-    y: Option<f32>,
-    z: Option<f32>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct DisplayUpdate {
     object_id: String,
     name: Option<String>,
     color: Option<String>,
     opacity: Option<f32>,
     visible: Option<bool>,
-    offset: Option<OffsetUpdate>,
-    thickness: Option<f32>,
+    min_z: Option<f32>,
+    max_z: Option<f32>,
+    bounds: Option<model::Bounds2d>,
 }
 
 #[derive(serde::Deserialize)]
@@ -383,8 +376,7 @@ struct BaseplateTarget {
     cell_name: String,
 }
 
-const MINIMUM_THICKNESS: f32 = 1.0;
-const THICKNESS_TOLERANCE: f32 = 0.0001;
+const MINIMUM_SPAN: f32 = 0.0001;
 
 fn snapshot(session: &EditorSession) -> Result<SceneSnapshot, String> {
     let render_scene = session
@@ -509,11 +501,14 @@ fn update_object_display(
         .cloned()
         .ok_or_else(|| "scene object not found".to_owned())?;
     let mut after = before.clone();
-    if let Some(thickness) = update.thickness {
-        if thickness < MINIMUM_THICKNESS - THICKNESS_TOLERANCE {
-            return Err("thickness must be at least 1".to_owned());
-        }
-        after.thickness = thickness;
+    if let Some(min_z) = update.min_z {
+        after.min_z = min_z;
+    }
+    if let Some(max_z) = update.max_z {
+        after.max_z = max_z;
+    }
+    if after.max_z - after.min_z < MINIMUM_SPAN {
+        return Err("Z range requires max greater than min".to_owned());
     }
     if let Some(name) = update.name {
         let name = name.trim();
@@ -531,27 +526,40 @@ fn update_object_display(
     if let Some(visible) = update.visible {
         after.visible = visible;
     }
-    if let Some(offset) = update.offset {
-        if let Some(x) = offset.x {
-            after.offset.x = x;
+    let bounds_change = match update.bounds {
+        Some(bounds) => {
+            if bounds.max_x - bounds.min_x < MINIMUM_SPAN
+                || bounds.max_y - bounds.min_y < MINIMUM_SPAN
+            {
+                return Err("bounds require max greater than min on each axis".to_owned());
+            }
+            let baseplate = scene
+                .document
+                .baseplate_mut(&update.object_id)
+                .ok_or_else(|| "only baseplates expose editable bounds".to_owned())?;
+            (baseplate.bounds != bounds).then(|| model::BoundsChange {
+                object_id: update.object_id.clone(),
+                before: baseplate.bounds.clone(),
+                after: bounds,
+            })
         }
-        if let Some(y) = offset.y {
-            after.offset.y = y;
-        }
-        if let Some(z) = offset.z {
-            after.offset.z = z;
-        }
-    }
-    if before == after {
+        None => None,
+    };
+    let display_changed = before != after;
+    if !display_changed && bounds_change.is_none() {
         return Ok(scene.status());
     }
-    scene.execute(model::DocumentCommand::SetDisplay(vec![
-        model::DisplayChange {
-            object_id: update.object_id,
-            before,
-            after,
-        },
-    ]))?;
+    scene.execute(model::DocumentCommand::SetObject {
+        displays: display_changed
+            .then(|| model::DisplayChange {
+                object_id: update.object_id.clone(),
+                before,
+                after,
+            })
+            .into_iter()
+            .collect(),
+        bounds: bounds_change.into_iter().collect(),
+    })?;
     Ok(scene.status())
 }
 
@@ -586,7 +594,10 @@ fn set_objects_visibility(
     if changes.is_empty() {
         return Ok(scene.status());
     }
-    scene.execute(model::DocumentCommand::SetDisplay(changes))?;
+    scene.execute(model::DocumentCommand::SetObject {
+        displays: changes,
+        bounds: Vec::new(),
+    })?;
     Ok(scene.status())
 }
 

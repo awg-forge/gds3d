@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -11,14 +10,11 @@ use flate2::Compression;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use serde::{Deserialize, Serialize};
-#[cfg(test)]
-use serde_json::Map;
 use serde_json::Value;
 
-use crate::model::{ProjectDocument, SceneObject, SourceDocument};
+use crate::model::{ProjectDocument, SourceDocument};
 
-pub const ARCHIVE_FORMAT_VERSION: u32 = 1;
-pub const DOCUMENT_ARCHIVE_FORMAT_VERSION: u32 = 3;
+pub const DOCUMENT_ARCHIVE_FORMAT_VERSION: u32 = 4;
 pub const SCENE_JSON_NAME: &str = "scene.json";
 pub const RAW_GDS_DIR: &str = "gds";
 
@@ -32,30 +28,7 @@ const ZIP_VERSION_MADE_BY: u16 = 20;
 const ZIP_SEARCH_BACK_MAX: usize = 65_557;
 const ZIP_ENTRY_BYTES_MAX: usize = 512 * 1024 * 1024;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ArchiveObject {
-    pub kind: String,
-    pub payload: Value,
-}
-
-pub type ArchiveData = (Vec<ArchiveObject>, HashMap<String, Vec<u8>>);
-
-pub fn read_scene_objects(file_path: &Path) -> anyhow::Result<Vec<SceneObject>> {
-    let (objects, _) = read_archive(file_path)?;
-    objects
-        .into_iter()
-        .map(|object| {
-            object
-                .payload
-                .get("scene_object")
-                .cloned()
-                .ok_or_else(|| anyhow!("project object is missing geometry"))
-                .and_then(|value| serde_json::from_value(value).context("parse project object"))
-        })
-        .collect()
-}
-
-/// Write a version 3 `.gds3d` archive containing the editable project document.
+/// Write a `.gds3d` archive containing the editable project document.
 #[cfg(test)]
 pub fn write_project_archive(file_path: &Path, document: &ProjectDocument) -> anyhow::Result<()> {
     let path = normalize_output_path(file_path)?;
@@ -81,8 +54,7 @@ pub fn write_project_archive_to(
     write_zip(file, &entries)
 }
 
-/// Read the current project archive, migrating legacy version 1 archives into
-/// the document model without discarding their visible geometry.
+/// Read the current project archive.
 pub fn read_project_document(file_path: &Path) -> anyhow::Result<ProjectDocument> {
     let entries = read_zip_file(file_path)?;
     let scene_data = entries
@@ -93,55 +65,31 @@ pub fn read_project_document(file_path: &Path) -> anyhow::Result<ProjectDocument
     let version = value
         .get("version")
         .or_else(|| value.get("format_version"))
-        .and_then(Value::as_u64);
-    match version {
-        Some(version) if version == u64::from(DOCUMENT_ARCHIVE_FORMAT_VERSION) => {
-            let archive: DocumentArchiveOwned =
-                serde_json::from_value(value).context("parse document project archive")?;
-            if archive.format != "gds3d" {
-                bail!("unsupported project archive format: {}", archive.format);
-            }
-            if archive.version != DOCUMENT_ARCHIVE_FORMAT_VERSION {
-                bail!("unsupported project archive version: {}", archive.version);
-            }
-            let mut document = archive.document;
-            for source in document.sources.values_mut() {
-                let entry_name = format!("{RAW_GDS_DIR}/{}", source.source_key);
-                source.embedded_data = entries
-                    .iter()
-                    .find(|entry| entry.name == entry_name)
-                    .map(|entry| entry.data.clone());
-            }
-            Ok(document)
-        }
-        Some(version) if version == u64::from(ARCHIVE_FORMAT_VERSION) => {
-            let mut document =
-                ProjectDocument::from_legacy_render_objects(read_scene_objects(file_path)?);
-            for source in document.sources.values_mut() {
-                let entry_name = format!("{RAW_GDS_DIR}/{}", source.source_key);
-                source.embedded_data = entries
-                    .iter()
-                    .find(|entry| entry.name == entry_name)
-                    .map(|entry| entry.data.clone());
-            }
-            Ok(document)
-        }
-        Some(version) => bail!("unsupported project archive version: {version}"),
-        None => bail!("project archive is missing a format version"),
+        .and_then(Value::as_u64)
+        .ok_or_else(|| anyhow!("project archive is missing a format version"))?;
+    if version != u64::from(DOCUMENT_ARCHIVE_FORMAT_VERSION) {
+        bail!("unsupported project archive version: {version}");
     }
+    let archive: DocumentArchiveOwned =
+        serde_json::from_value(value).context("parse document project archive")?;
+    if archive.format != "gds3d" {
+        bail!("unsupported project archive format: {}", archive.format);
+    }
+    if archive.version != DOCUMENT_ARCHIVE_FORMAT_VERSION {
+        bail!("unsupported project archive version: {}", archive.version);
+    }
+    let mut document = archive.document;
+    for source in document.sources.values_mut() {
+        let entry_name = format!("{RAW_GDS_DIR}/{}", source.source_key);
+        source.embedded_data = entries
+            .iter()
+            .find(|entry| entry.name == entry_name)
+            .map(|entry| entry.data.clone());
+    }
+    Ok(document)
 }
 
 /// Write a `.gds3d` project archive with `scene.json` and embedded GDS sources.
-#[cfg(test)]
-pub fn write_archive(file_path: &Path, objects: &[SceneObject]) -> anyhow::Result<()> {
-    let path = normalize_output_path(file_path)?;
-    let mut entries = Vec::new();
-    let scene_payload = Value::Object(build_scene_payload(objects));
-    entries.push(ZipEntry::from_json(SCENE_JSON_NAME, &scene_payload)?);
-    write_gds_sources(&mut entries, objects)?;
-    write_zip_file(&path, &entries)
-}
-
 fn write_document_sources<'a>(
     entries: &mut Vec<ZipEntry>,
     sources: impl Iterator<Item = &'a SourceDocument>,
@@ -163,51 +111,6 @@ fn write_document_sources<'a>(
         entries.push(ZipEntry::from_bytes(&entry_name, data)?);
     }
     Ok(())
-}
-
-/// Read a `.gds3d` project archive.
-pub fn read_archive(file_path: &Path) -> anyhow::Result<ArchiveData> {
-    if file_path.extension().and_then(|suffix| suffix.to_str()) != Some("gds3d") {
-        bail!("selected file is not a .gds3d archive");
-    }
-
-    let entries = read_zip_file(file_path)?;
-    let mut objects = None;
-    let mut gds_sources = HashMap::new();
-
-    for entry in entries {
-        if entry.name == SCENE_JSON_NAME {
-            let scene: SceneArchive =
-                serde_json::from_slice(&entry.data).context("parse scene.json")?;
-            if scene.format_version != ARCHIVE_FORMAT_VERSION {
-                bail!(
-                    "unsupported project archive version: {}",
-                    scene.format_version
-                );
-            }
-            objects = Some(
-                scene
-                    .objects
-                    .into_iter()
-                    .map(|item| ArchiveObject {
-                        kind: item.kind,
-                        payload: item.payload,
-                    })
-                    .collect(),
-            );
-            continue;
-        }
-
-        if let Some(source_name) = entry.name.strip_prefix(&format!("{RAW_GDS_DIR}/"))
-            && !source_name.is_empty()
-            && safe_archive_name(source_name)
-        {
-            gds_sources.insert(source_name.to_owned(), entry.data);
-        }
-    }
-
-    let objects = objects.ok_or_else(|| anyhow!("project archive is missing scene.json"))?;
-    Ok((objects, gds_sources))
 }
 
 pub fn source_key_for_path(path: &Path) -> String {
@@ -235,133 +138,8 @@ fn normalize_output_path(file_path: &Path) -> anyhow::Result<PathBuf> {
     bail!("project archive requires .gds3d suffix");
 }
 
-#[cfg(test)]
-fn build_scene_payload(objects: &[SceneObject]) -> Map<String, Value> {
-    let mut map = Map::new();
-    map.insert(
-        "format_version".to_owned(),
-        Value::from(ARCHIVE_FORMAT_VERSION),
-    );
-    map.insert(
-        "objects".to_owned(),
-        Value::Array(objects.iter().map(serialize_object).collect()),
-    );
-    map
-}
-
-#[cfg(test)]
-fn serialize_object(obj: &SceneObject) -> Value {
-    let scene_object = serde_json::to_value(obj).unwrap_or(Value::Null);
-    let mut payload = Map::new();
-    match obj {
-        SceneObject::GdsLayer(layer) => {
-            payload.insert("object_id".to_owned(), Value::from(layer.id.clone()));
-            payload.insert("name".to_owned(), Value::from(layer.display.name.clone()));
-            payload.insert(
-                "source_key".to_owned(),
-                Value::from(layer.source_key.clone()),
-            );
-            payload.insert(
-                "source_name".to_owned(),
-                Value::from(file_name(&layer.source_path)),
-            );
-            payload.insert("cell_name".to_owned(), Value::from(layer.cell_name.clone()));
-            payload.insert("layer".to_owned(), Value::from(layer.layer));
-            payload.insert("datatype".to_owned(), Value::from(layer.datatype));
-            payload.insert(
-                "display_path".to_owned(),
-                Value::from(layer.file_path.display().to_string()),
-            );
-            payload.insert(
-                "bounds".to_owned(),
-                serde_json::to_value(&layer.bounds).unwrap_or(Value::Null),
-            );
-            payload.insert("color".to_owned(), Value::from(layer.display.color.clone()));
-            payload.insert("opacity".to_owned(), Value::from(layer.display.opacity));
-            payload.insert("visible".to_owned(), Value::from(layer.display.visible));
-            archive_object_with_scene("gds_layer", payload, scene_object)
-        }
-        SceneObject::Baseplate(baseplate) => {
-            payload.insert("object_id".to_owned(), Value::from(baseplate.id.clone()));
-            payload.insert(
-                "name".to_owned(),
-                Value::from(baseplate.display.name.clone()),
-            );
-            payload.insert(
-                "bounds".to_owned(),
-                serde_json::to_value(&baseplate.bounds).unwrap_or(Value::Null),
-            );
-            payload.insert(
-                "color".to_owned(),
-                Value::from(baseplate.display.color.clone()),
-            );
-            payload.insert("opacity".to_owned(), Value::from(baseplate.display.opacity));
-            payload.insert("visible".to_owned(), Value::from(baseplate.display.visible));
-            archive_object_with_scene("baseplate", payload, scene_object)
-        }
-    }
-}
-
-#[cfg(test)]
-fn archive_object_with_scene(
-    kind: &str,
-    mut payload: Map<String, Value>,
-    scene_object: Value,
-) -> Value {
-    payload.insert("scene_object".to_owned(), scene_object);
-    archive_object(kind, payload)
-}
-
-#[cfg(test)]
-fn archive_object(kind: &str, payload: Map<String, Value>) -> Value {
-    Value::Object(Map::from_iter([
-        ("kind".to_owned(), Value::from(kind)),
-        ("payload".to_owned(), Value::Object(payload)),
-    ]))
-}
-
-#[cfg(test)]
-fn write_gds_sources(entries: &mut Vec<ZipEntry>, objects: &[SceneObject]) -> anyhow::Result<()> {
-    let mut seen = HashMap::<String, ()>::new();
-    for obj in objects {
-        let SceneObject::GdsLayer(layer) = obj else {
-            continue;
-        };
-        if seen.insert(layer.source_key.clone(), ()).is_some() {
-            continue;
-        }
-        let metadata = fs::metadata(&layer.source_path)
-            .with_context(|| format!("read GDS metadata: {}", layer.source_path.display()))?;
-        if metadata.len() > ZIP_ENTRY_BYTES_MAX as u64 {
-            bail!(
-                "GDS source is too large to embed: {}",
-                layer.source_path.display()
-            );
-        }
-        let data = fs::read(&layer.source_path)
-            .with_context(|| format!("read GDS source: {}", layer.source_path.display()))?;
-        let entry_name = format!("{RAW_GDS_DIR}/{}", layer.source_key);
-        entries.push(ZipEntry::from_bytes(&entry_name, data)?);
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-fn file_name(path: &Path) -> String {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("unknown.gds")
-        .to_owned()
-}
-
 fn safe_archive_name(name: &str) -> bool {
     !name.contains('\\') && !name.contains("..") && !name.starts_with('/')
-}
-
-#[derive(Deserialize)]
-struct SceneArchive {
-    format_version: u32,
-    objects: Vec<SceneArchiveObject>,
 }
 
 #[derive(Serialize)]
@@ -376,12 +154,6 @@ struct DocumentArchiveOwned {
     format: String,
     version: u32,
     document: ProjectDocument,
-}
-
-#[derive(Deserialize)]
-struct SceneArchiveObject {
-    kind: String,
-    payload: Value,
 }
 
 #[derive(Clone)]
@@ -418,13 +190,6 @@ impl ZipEntry {
             uncompressed_size: u32::try_from(data.len())?,
         })
     }
-}
-
-#[cfg(test)]
-fn write_zip_file(path: &Path, entries: &[ZipEntry]) -> anyhow::Result<()> {
-    let mut file = fs::File::create(path)
-        .with_context(|| format!("create project archive: {}", path.display()))?;
-    write_zip(&mut file, entries)
 }
 
 fn write_zip(mut file: &mut fs::File, entries: &[ZipEntry]) -> anyhow::Result<()> {
@@ -629,73 +394,16 @@ fn read_u32(data: &[u8], offset: usize) -> anyhow::Result<u32> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
-    use crate::archive::{
-        read_archive, read_project_document, source_key_for_path, write_archive,
-        write_project_archive,
-    };
-    use crate::model::{
-        Bounds2d, DisplayProperties, GdsLayerObject, ProjectDocument, SceneObject, inspect_gds_file,
-    };
+    use crate::archive::{read_project_document, source_key_for_path, write_project_archive};
+    use crate::model::{ProjectDocument, inspect_gds_file};
 
     #[test]
     fn source_key_suffix() {
         let key = source_key_for_path(Path::new("models/AWG.gds"));
         assert!(key.starts_with("AWG-"));
         assert!(key.ends_with(".gds"));
-    }
-
-    #[test]
-    fn archive_round_trip() {
-        let temp_dir = std::env::temp_dir().join(format!("gds3d-{}", uuid::Uuid::new_v4()));
-        fs::create_dir_all(&temp_dir).expect("create temp dir");
-        let archive_path = temp_dir.join("project.gds3d");
-        let gds_path = PathBuf::from("../models/AWG.gds");
-        let obj = SceneObject::GdsLayer(GdsLayerObject {
-            id: "00000000000000000000000000000001".to_owned(),
-            display: DisplayProperties::gds_layer("L4/1"),
-            file_path: gds_path.clone(),
-            source_path: gds_path.clone(),
-            source_key: source_key_for_path(&gds_path),
-            cell_name: "AWG".to_owned(),
-            layer: 4,
-            datatype: 1,
-            bounds: Bounds2d {
-                min_x: 0.0,
-                min_y: 0.0,
-                max_x: 1.0,
-                max_y: 1.0,
-            },
-            polygons: Vec::new(),
-        });
-
-        write_archive(&archive_path, &[obj]).expect("write archive");
-        let (objects, sources) = read_archive(&archive_path).expect("read archive");
-        assert_eq!(objects.len(), 1);
-        let payload = objects[0].payload.as_object().expect("object payload");
-        assert_eq!(
-            payload.get("object_id").and_then(serde_json::Value::as_str),
-            Some("00000000000000000000000000000001")
-        );
-        assert_eq!(
-            payload
-                .get("display_path")
-                .and_then(serde_json::Value::as_str),
-            Some("../models/AWG.gds")
-        );
-        assert_eq!(sources.len(), 1);
-        assert!(sources.values().next().is_some_and(|data| !data.is_empty()));
-        let migrated = read_project_document(&archive_path).expect("migrate legacy archive");
-        assert_eq!(migrated.cells.len(), 1);
-        assert_eq!(migrated.layer_views.len(), 1);
-        assert!(
-            migrated
-                .sources
-                .values()
-                .all(|source| source.embedded_data.is_some())
-        );
-        fs::remove_dir_all(&temp_dir).expect("remove temp dir");
     }
 
     #[test]
@@ -714,8 +422,8 @@ mod tests {
         let mut document =
             ProjectDocument::from_gds(gds_path, &[selection]).expect("import project document");
         for layer in document.layer_views.values_mut() {
-            layer.display.offset.x = 12.5;
-            layer.display.offset.y = -7.25;
+            layer.display.min_z = -2.5;
+            layer.display.max_z = 12.5;
         }
         let mut expected_cell_ids = document.cells.keys().copied().collect::<Vec<_>>();
         expected_cell_ids.sort_by_key(|id| id.0);
@@ -736,7 +444,7 @@ mod tests {
             loaded
                 .layer_views
                 .values()
-                .all(|layer| layer.display.offset.x == 12.5 && layer.display.offset.y == -7.25)
+                .all(|layer| layer.display.min_z == -2.5 && layer.display.max_z == 12.5)
         );
         assert_eq!(
             loaded

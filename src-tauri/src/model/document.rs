@@ -214,91 +214,6 @@ impl ProjectDocument {
         Ok(())
     }
 
-    pub fn from_legacy_render_objects(objects: Vec<SceneObject>) -> Self {
-        let mut document = Self::default();
-        let mut sources = IndexMap::<String, SourceId>::new();
-        for object in objects {
-            match object {
-                SceneObject::GdsLayer(layer) => {
-                    let source_id = *sources.entry(layer.source_key.clone()).or_insert_with(|| {
-                        let id = SourceId(document.id_allocator.allocate());
-                        document.sources.insert(
-                            id,
-                            SourceDocument {
-                                id,
-                                file_path: layer.source_path.clone(),
-                                source_key: layer.source_key.clone(),
-                                embedded_data: None,
-                            },
-                        );
-                        id
-                    });
-                    let cell_id = CellId(document.id_allocator.allocate());
-                    let mut shapes = IndexMap::new();
-                    for (element_index, polygon) in layer.polygons.into_iter().enumerate() {
-                        let shape_id = ShapeId(document.id_allocator.allocate());
-                        shapes.insert(
-                            shape_id,
-                            Shape {
-                                id: shape_id,
-                                parent_cell: cell_id,
-                                layer: layer.layer,
-                                datatype: layer.datatype,
-                                geometry: ShapeKind::Boundary(polygon),
-                            },
-                        );
-                        document.source_map.insert(
-                            shape_id,
-                            SourceMapEntry {
-                                source_id,
-                                cell_name: layer.cell_name.clone(),
-                                element_index: u64::try_from(element_index)
-                                    .expect("legacy GDS element index exceeds u64"),
-                                element_kind: GdsElementKind::Boundary,
-                            },
-                        );
-                    }
-                    document.cells.insert(
-                        cell_id,
-                        CellDefinition {
-                            id: cell_id,
-                            source_id,
-                            name: layer.cell_name,
-                            shapes,
-                            instances: IndexMap::new(),
-                        },
-                    );
-                    document.root_cells.push(cell_id);
-                    let layer_view_id = LayerViewId(document.id_allocator.allocate());
-                    document.layer_views.insert(
-                        layer_view_id,
-                        LayerView {
-                            id: layer_view_id,
-                            root_cell: cell_id,
-                            layer: layer.layer,
-                            datatype: layer.datatype,
-                            display: layer.display,
-                        },
-                    );
-                }
-                SceneObject::Baseplate(baseplate) => {
-                    let id = BaseplateId(document.id_allocator.allocate());
-                    document.baseplates.insert(
-                        id,
-                        Baseplate {
-                            id,
-                            display: baseplate.display,
-                            bounds: baseplate.bounds,
-                            default_bounds: baseplate.default_bounds,
-                        },
-                    );
-                }
-            }
-        }
-        document.touch();
-        document
-    }
-
     pub fn compile_render_scene(&self) -> anyhow::Result<RenderScene> {
         let mut render_scene = RenderScene::default();
         for layer_view in self.layer_views.values() {
@@ -315,7 +230,12 @@ impl ProjectDocument {
             };
             self.compile_layer_into(layer_view.root_cell, Transform2d::identity(), &mut state)?;
             let Some(bounds) = polygons_bounds(&state.polygons) else {
-                continue;
+                anyhow::bail!(
+                    "GDS layer L{}/{} of cell {} has no valid XY extent in the source file",
+                    layer_view.layer,
+                    layer_view.datatype,
+                    root_cell.name
+                );
             };
             render_scene.layers.push(RenderLayer {
                 object: GdsLayerObject {
@@ -463,6 +383,11 @@ impl ProjectDocument {
             .map(|baseplate| &mut baseplate.display)
     }
 
+    pub fn baseplate_mut(&mut self, render_id: &str) -> Option<&mut Baseplate> {
+        let id = render_id.strip_prefix("baseplate-")?.parse::<u64>().ok()?;
+        self.baseplates.get_mut(&BaseplateId(id))
+    }
+
     pub fn remove_render_object(&mut self, render_id: &str) -> bool {
         let removed = if let Some(id) = render_id.strip_prefix("layer-") {
             id.parse::<u64>()
@@ -519,7 +444,6 @@ impl ProjectDocument {
         for layer in render_scene.layers {
             let matches_selection = match selection {
                 Selection::Scene => true,
-                Selection::Object(render_id) => layer.object.id == *render_id,
                 Selection::Cell(key) => {
                     layer.object.file_path == key.file_path
                         && layer.object.cell_name == key.cell_name

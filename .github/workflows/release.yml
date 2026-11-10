@@ -4,9 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (e.g. v1.0.0)"
+        required: true
+        type: string
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -24,26 +30,44 @@ jobs:
       release_name: ${{ steps.meta.outputs.release_name }}
       release_body: ${{ steps.meta.outputs.release_body }}
     steps:
+      - name: Resolve release tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "Tag does not match the vX.Y.Z format: $TAG"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
 
       - name: Validate tag points to main
+        id: commit
         run: |
           set -euo pipefail
           git fetch origin main --no-tags
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "Tag ${GITHUB_REF_NAME} does not point to a commit on main"
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "Tag ${{ steps.tag.outputs.tag }} does not point to a commit on main"
             exit 1
           fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Verify required checks
         uses: actions/github-script@v9
+        env:
+          RELEASE_SHA: ${{ steps.commit.outputs.sha }}
         with:
           script: |
             const { owner, repo } = context.repo;
-            const headSha = process.env.GITHUB_SHA;
+            const headSha = process.env.RELEASE_SHA;
             const requiredWorkflowName = 'Code Quality';
 
             const attempts = 80;
@@ -84,14 +108,11 @@ jobs:
 
       - name: Extract version metadata
         id: meta
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="$GITHUB_REF_NAME"
-          if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
-            echo "Tag does not match the vX.Y.Z format: $TAG"
-            exit 1
-          fi
-
+          TAG="$RELEASE_TAG"
           VERSION="${TAG#v}"
           RELEASE_BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
           PRERELEASE=false
@@ -142,6 +163,7 @@ jobs:
           RELEASE_NAME: ${{ steps.meta.outputs.release_name }}
           RELEASE_BODY: ${{ steps.meta.outputs.release_body }}
           RELEASE_PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+          RELEASE_SHA: ${{ steps.commit.outputs.sha }}
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -164,7 +186,7 @@ jobs:
               owner,
               repo,
               tag_name: tag,
-              target_commitish: context.sha,
+              target_commitish: process.env.RELEASE_SHA,
               name: process.env.RELEASE_NAME,
               body: process.env.RELEASE_BODY,
               draft: true,
@@ -202,6 +224,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate-tag.outputs.tag }}
 
       - name: Install system dependencies (Ubuntu only)
         if: startsWith(matrix.platform, 'ubuntu-')

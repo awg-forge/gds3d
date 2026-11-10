@@ -371,12 +371,12 @@ mod tests {
         let display = document.display_mut(&object_id).expect("baseplate display");
         display.color = "#123456".to_owned();
         display.opacity = 0.6;
-        display.z_min = -20.0;
+        display.offset.z = -20.0;
 
         let defaults = document.display_defaults();
         let saved = defaults.get(&object_id).expect("saved display defaults");
         assert_eq!(saved.color, "#123456");
         assert_eq!(saved.opacity, 0.6);
-        assert_eq!(saved.z_min, -20.0);
+        assert_eq!(saved.offset.z, -20.0);
     }
 }

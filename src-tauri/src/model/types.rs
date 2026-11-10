@@ -191,6 +191,13 @@ pub struct ProjectDocument {
     pub(super) revision: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Offset3d {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DisplayProperties {
     pub name: String,
@@ -198,12 +205,8 @@ pub struct DisplayProperties {
     pub color: String,
     #[serde(default = "default_opacity")]
     pub opacity: f32,
-    #[serde(default)]
-    pub offset_x: f32,
-    #[serde(default)]
-    pub offset_y: f32,
-    pub z_min: f32,
-    pub z_max: f32,
+    pub offset: Offset3d,
+    pub thickness: f32,
     #[serde(default)]
     pub defaults: DisplayDefaults,
 }
@@ -214,12 +217,8 @@ pub struct DisplayDefaults {
     pub color: String,
     #[serde(default = "default_opacity")]
     pub opacity: f32,
-    #[serde(default)]
-    pub offset_x: f32,
-    #[serde(default)]
-    pub offset_y: f32,
-    pub z_min: f32,
-    pub z_max: f32,
+    pub offset: Offset3d,
+    pub thickness: f32,
 }
 
 fn default_opacity() -> f32 {
@@ -232,10 +231,8 @@ impl DisplayProperties {
             name: self.name.clone(),
             color: self.color.clone(),
             opacity: self.opacity,
-            offset_x: self.offset_x,
-            offset_y: self.offset_y,
-            z_min: self.z_min,
-            z_max: self.z_max,
+            offset: self.offset,
+            thickness: self.thickness,
         }
     }
 
@@ -246,19 +243,15 @@ impl DisplayProperties {
                 name: name.clone(),
                 color: "#2D6CDF".to_owned(),
                 opacity: 1.0,
-                offset_x: 0.0,
-                offset_y: 0.0,
-                z_min: 0.0,
-                z_max: 15.0,
+                offset: Offset3d::default(),
+                thickness: 15.0,
             },
             name,
             visible: true,
             color: "#2D6CDF".to_owned(),
             opacity: 1.0,
-            offset_x: 0.0,
-            offset_y: 0.0,
-            z_min: 0.0,
-            z_max: 15.0,
+            offset: Offset3d::default(),
+            thickness: 15.0,
         }
     }
 
@@ -269,19 +262,42 @@ impl DisplayProperties {
                 name: name.clone(),
                 color: "#5F6B78".to_owned(),
                 opacity: 1.0,
-                offset_x: 0.0,
-                offset_y: 0.0,
-                z_min: -15.0,
-                z_max: 0.0,
+                offset: Offset3d {
+                    x: 0.0,
+                    y: 0.0,
+                    z: -15.0,
+                },
+                thickness: 15.0,
             },
             name,
             visible: true,
             color: "#5F6B78".to_owned(),
             opacity: 1.0,
-            offset_x: 0.0,
-            offset_y: 0.0,
-            z_min: -15.0,
-            z_max: 0.0,
+            offset: Offset3d {
+                x: 0.0,
+                y: 0.0,
+                z: -15.0,
+            },
+            thickness: 15.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_json_uses_offset_and_thickness() {
+        let display = DisplayProperties::gds_layer("L4/1");
+        let json = serde_json::to_value(&display).expect("serialize display");
+
+        assert_eq!(
+            json["offset"],
+            serde_json::json!({ "x": 0.0, "y": 0.0, "z": 0.0 })
+        );
+        assert_eq!(json["thickness"], serde_json::json!(15.0));
+        assert!(json.get("z_min").is_none());
+        assert!(json.get("offset_x").is_none());
     }
 }

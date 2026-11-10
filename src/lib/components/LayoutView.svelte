@@ -57,6 +57,12 @@
     onsaveforexitready?: (save: (() => Promise<boolean>) | null) => void;
   } = $props();
 
+  type Offset3d = {
+    x?: number;
+    y?: number;
+    z?: number;
+  };
+
   type Entry = {
     kind?: string;
     payload?: {
@@ -66,18 +72,14 @@
         color?: string;
         opacity?: number;
         visible?: boolean;
-        offset_x?: number;
-        offset_y?: number;
-        z_min?: number;
-        z_max?: number;
+        offset?: Offset3d;
+        thickness?: number;
         defaults?: {
           name?: string;
           color?: string;
           opacity?: number;
-          offset_x?: number;
-          offset_y?: number;
-          z_min?: number;
-          z_max?: number;
+          offset?: Offset3d;
+          thickness?: number;
         };
       };
       file_path?: string;
@@ -104,10 +106,8 @@
     color?: string;
     opacity?: number;
     visible?: boolean;
-    offset_x?: number;
-    offset_y?: number;
-    z_min?: number;
-    z_max?: number;
+    offset?: Offset3d;
+    thickness?: number;
   };
 
   type ViewportDisplayEvent = {
@@ -129,7 +129,7 @@
 
   const panelResizeStep = 12;
   const resizerWidth = 8;
-  const minimumZSpan = 1;
+  const minimumThickness = 1;
   const minimumViewportWidth = 360;
   const minimumLayerPanelWidth = 200;
   const maximumLayerPanelWidth = 440;
@@ -479,14 +479,19 @@
       if (!object.payload?.id || !selectedIds.has(object.payload.id) || !object.payload.display) {
         continue;
       }
-      Object.assign(object.payload.display, update);
+      const { offset, ...rest } = update;
+      if (offset) object.payload.display.offset = { ...object.payload.display.offset, ...offset };
+      Object.assign(object.payload.display, rest);
     }
     scene.revision += 1;
   }
 
   function scheduleDisplayUpdate(id: string, update: DisplayPatch) {
     patchLocalDisplay([id], update);
-    pendingDisplayUpdates.set(id, { ...pendingDisplayUpdates.get(id), ...update });
+    const pending = pendingDisplayUpdates.get(id);
+    const patch = { ...pending, ...update };
+    if (update.offset) patch.offset = { ...pending?.offset, ...update.offset };
+    pendingDisplayUpdates.set(id, patch);
     if (displayUpdateTimer !== undefined) window.clearTimeout(displayUpdateTimer);
     displayUpdateTimer = window.setTimeout(() => void flushDisplayUpdates(), 60);
   }
@@ -505,10 +510,8 @@
             color: update.color,
             opacity: update.opacity,
             visible: update.visible,
-            offsetX: update.offset_x,
-            offsetY: update.offset_y,
-            zMin: update.z_min,
-            zMax: update.z_max,
+            offset: update.offset,
+            thickness: update.thickness,
           }),
         ),
       );
@@ -533,10 +536,8 @@
               color: display.color,
               opacity: display.opacity,
               visible: display.visible,
-              offset_x: display.offset_x,
-              offset_y: display.offset_y,
-              z_min: display.z_min,
-              z_max: display.z_max,
+              offset: display.offset,
+              thickness: display.thickness,
             },
           },
         }),
@@ -828,24 +829,35 @@
     );
   }
 
-  function updateNumber(
-    id: string,
-    key: "opacity" | "offset_x" | "offset_y" | "z_min" | "z_max",
-    value: number,
-  ) {
-    if (!Number.isFinite(value)) return undefined;
-    const display = (
-      scene?.objects.find((entry) => (entry as Entry).payload?.id === id) as Entry | undefined
-    )?.payload?.display;
-    let clamped = value;
-    if (key === "opacity") {
-      clamped = Math.min(1, Math.max(0, value));
-    } else if (key === "z_min") {
-      clamped = Math.min(value, (display?.z_max ?? value + minimumZSpan) - minimumZSpan);
-    } else if (key === "z_max") {
-      clamped = Math.max(value, (display?.z_min ?? value - minimumZSpan) + minimumZSpan);
+  function rangeRow(axis: string, min?: number, max?: number, offset = 0) {
+    if (min === undefined || max === undefined) {
+      return { axis, min: "—", max: "—", size: "—" };
     }
-    updateDisplay(id, { [key]: clamped });
+    return {
+      axis,
+      min: (min + offset).toFixed(4),
+      max: (max + offset).toFixed(4),
+      size: (max - min).toFixed(4),
+    };
+  }
+
+  function updateOpacity(id: string, value: number) {
+    if (!Number.isFinite(value)) return undefined;
+    const clamped = Math.min(1, Math.max(0, value));
+    updateDisplay(id, { opacity: clamped });
+    return clamped;
+  }
+
+  function updateOffset(id: string, axis: "x" | "y" | "z", value: number) {
+    if (!Number.isFinite(value)) return undefined;
+    updateDisplay(id, { offset: { [axis]: value } });
+    return value;
+  }
+
+  function updateThickness(id: string, value: number) {
+    if (!Number.isFinite(value)) return undefined;
+    const clamped = Math.max(minimumThickness, value);
+    updateDisplay(id, { thickness: clamped });
     return clamped;
   }
 
@@ -1052,7 +1064,15 @@
       {#if selected}{@const id = selected.payload?.id ?? ""}
         {@const display = selected.payload?.display}
         {@const defaults = display?.defaults}
-        {@const offsetSpan = offsetLimit(selected.payload?.bounds)}
+        {@const bounds = selected.payload?.bounds}
+        {@const offset = display?.offset ?? {}}
+        {@const thickness = display?.thickness ?? 0}
+        {@const offsetSpan = offsetLimit(bounds)}
+        {@const rangeRows = [
+          rangeRow("X", bounds?.min_x, bounds?.max_x, offset.x ?? 0),
+          rangeRow("Y", bounds?.min_y, bounds?.max_y, offset.y ?? 0),
+          rangeRow("Z", offset.z ?? 0, (offset.z ?? 0) + thickness),
+        ]}
         <div class="property-grid">
           <section class="property-section">
             <h3>{t("gds.basic")}</h3>
@@ -1124,8 +1144,7 @@
                   max={1}
                   step={0.05}
                   ariaLabel={t("gds.opacity")}
-                  onvaluechange={(opacity) =>
-                    id ? updateNumber(id, "opacity", opacity) : undefined}
+                  onvaluechange={(opacity) => (id ? updateOpacity(id, opacity) : undefined)}
                 />
                 <Input
                   class="number-input"
@@ -1135,8 +1154,7 @@
                   max={1}
                   step={0.05}
                   hideNumberControls
-                  onchange={(event) =>
-                    id && updateNumber(id, "opacity", Number(event.currentTarget.value))}
+                  onchange={(event) => id && updateOpacity(id, Number(event.currentTarget.value))}
                 />
                 <button
                   class="reset-button"
@@ -1145,47 +1163,46 @@
                   title={t("gds.reset")}
                   aria-label={t("gds.reset")}
                   onclick={() =>
-                    id &&
-                    defaults?.opacity !== undefined &&
-                    updateNumber(id, "opacity", defaults.opacity)}><RotateCcw size={14} /></button
+                    id && defaults?.opacity !== undefined && updateOpacity(id, defaults.opacity)}
+                  ><RotateCcw size={14} /></button
                 >
               </div>
             </div>
           </section>
 
           <section class="property-section">
-            <h3>{t("gds.position")}</h3>
+            <h3>{t("gds.transform")}</h3>
             <div class="property-field">
               <label for="property-offset-x">{t("gds.xOffset")}</label>
               <div class="slider-control">
                 <Slider
-                  value={display?.offset_x ?? 0}
+                  value={offset.x ?? 0}
                   min={-offsetSpan}
                   max={offsetSpan}
                   step={0.1}
                   ariaLabel={t("gds.xOffset")}
-                  onvaluechange={(value) => (id ? updateNumber(id, "offset_x", value) : undefined)}
+                  onvaluechange={(value) => (id ? updateOffset(id, "x", value) : undefined)}
                 />
                 <Input
                   id="property-offset-x"
                   class="number-input offset-number-input"
                   type="number"
-                  value={display?.offset_x ?? 0}
+                  value={offset.x ?? 0}
                   step={0.1}
                   hideNumberControls
                   onchange={(event) =>
-                    id && updateNumber(id, "offset_x", Number(event.currentTarget.value))}
+                    id && updateOffset(id, "x", Number(event.currentTarget.value))}
                 />
                 <button
                   class="reset-button"
-                  disabled={defaults?.offset_x === undefined ||
-                    display?.offset_x === defaults.offset_x}
+                  disabled={defaults?.offset?.x === undefined ||
+                    (offset.x ?? 0) === defaults.offset.x}
                   title={t("gds.reset")}
                   aria-label={t("gds.reset")}
                   onclick={() =>
                     id &&
-                    defaults?.offset_x !== undefined &&
-                    updateNumber(id, "offset_x", defaults.offset_x)}><RotateCcw size={14} /></button
+                    defaults?.offset?.x !== undefined &&
+                    updateOffset(id, "x", defaults.offset.x)}><RotateCcw size={14} /></button
                 >
               </div>
             </div>
@@ -1193,130 +1210,127 @@
               <label for="property-offset-y">{t("gds.yOffset")}</label>
               <div class="slider-control">
                 <Slider
-                  value={display?.offset_y ?? 0}
+                  value={offset.y ?? 0}
                   min={-offsetSpan}
                   max={offsetSpan}
                   step={0.1}
                   ariaLabel={t("gds.yOffset")}
-                  onvaluechange={(value) => (id ? updateNumber(id, "offset_y", value) : undefined)}
+                  onvaluechange={(value) => (id ? updateOffset(id, "y", value) : undefined)}
                 />
                 <Input
                   id="property-offset-y"
                   class="number-input offset-number-input"
                   type="number"
-                  value={display?.offset_y ?? 0}
+                  value={offset.y ?? 0}
                   step={0.1}
                   hideNumberControls
                   onchange={(event) =>
-                    id && updateNumber(id, "offset_y", Number(event.currentTarget.value))}
+                    id && updateOffset(id, "y", Number(event.currentTarget.value))}
                 />
                 <button
                   class="reset-button"
-                  disabled={defaults?.offset_y === undefined ||
-                    display?.offset_y === defaults.offset_y}
+                  disabled={defaults?.offset?.y === undefined ||
+                    (offset.y ?? 0) === defaults.offset.y}
                   title={t("gds.reset")}
                   aria-label={t("gds.reset")}
                   onclick={() =>
                     id &&
-                    defaults?.offset_y !== undefined &&
-                    updateNumber(id, "offset_y", defaults.offset_y)}><RotateCcw size={14} /></button
-                >
-              </div>
-            </div>
-          </section>
-
-          <section class="property-section">
-            <h3>{t("gds.bounds")}</h3>
-            <div class="property-field readonly">
-              <span>{t("gds.xMin")}</span><strong
-                >{selected.payload?.bounds?.min_x?.toFixed(4) ?? "—"}</strong
-              >
-            </div>
-            <div class="property-field readonly">
-              <span>{t("gds.xMax")}</span><strong
-                >{selected.payload?.bounds?.max_x?.toFixed(4) ?? "—"}</strong
-              >
-            </div>
-            <div class="property-field readonly">
-              <span>{t("gds.yMin")}</span><strong
-                >{selected.payload?.bounds?.min_y?.toFixed(4) ?? "—"}</strong
-              >
-            </div>
-            <div class="property-field readonly">
-              <span>{t("gds.yMax")}</span><strong
-                >{selected.payload?.bounds?.max_y?.toFixed(4) ?? "—"}</strong
-              >
-            </div>
-            <div class="property-field">
-              <label for="property-z-min">{t("gds.zMin")}</label>
-              <div class="slider-control">
-                <Slider
-                  value={display?.z_min ?? 0}
-                  min={-100}
-                  max={100}
-                  step={0.1}
-                  ariaLabel={t("gds.zMin")}
-                  onvaluechange={(value) => (id ? updateNumber(id, "z_min", value) : undefined)}
-                />
-                <Input
-                  id="property-z-min"
-                  class="number-input z-number-input"
-                  type="number"
-                  value={display?.z_min ?? 0}
-                  min={-100}
-                  max={(display?.z_max ?? 100) - minimumZSpan}
-                  step={0.1}
-                  hideNumberControls
-                  onchange={(event) =>
-                    id && updateNumber(id, "z_min", Number(event.currentTarget.value))}
-                />
-                <button
-                  class="reset-button"
-                  disabled={defaults?.z_min === undefined || display?.z_min === defaults.z_min}
-                  title={t("gds.reset")}
-                  aria-label={t("gds.reset")}
-                  onclick={() =>
-                    id &&
-                    defaults?.z_min !== undefined &&
-                    updateNumber(id, "z_min", defaults.z_min)}><RotateCcw size={14} /></button
+                    defaults?.offset?.y !== undefined &&
+                    updateOffset(id, "y", defaults.offset.y)}><RotateCcw size={14} /></button
                 >
               </div>
             </div>
             <div class="property-field">
-              <label for="property-z-max">{t("gds.zMax")}</label>
+              <label for="property-offset-z">{t("gds.zOffset")}</label>
               <div class="slider-control">
                 <Slider
-                  value={display?.z_max ?? 0}
+                  value={offset.z ?? 0}
                   min={-100}
                   max={100}
                   step={0.1}
-                  ariaLabel={t("gds.zMax")}
-                  onvaluechange={(value) => (id ? updateNumber(id, "z_max", value) : undefined)}
+                  ariaLabel={t("gds.zOffset")}
+                  onvaluechange={(value) => (id ? updateOffset(id, "z", value) : undefined)}
                 />
                 <Input
-                  id="property-z-max"
-                  class="number-input z-number-input"
+                  id="property-offset-z"
+                  class="number-input offset-number-input"
                   type="number"
-                  value={display?.z_max ?? 0}
-                  min={(display?.z_min ?? -100) + minimumZSpan}
+                  value={offset.z ?? 0}
+                  min={-100}
                   max={100}
                   step={0.1}
                   hideNumberControls
                   onchange={(event) =>
-                    id && updateNumber(id, "z_max", Number(event.currentTarget.value))}
+                    id && updateOffset(id, "z", Number(event.currentTarget.value))}
                 />
                 <button
                   class="reset-button"
-                  disabled={defaults?.z_max === undefined || display?.z_max === defaults.z_max}
+                  disabled={defaults?.offset?.z === undefined ||
+                    (offset.z ?? 0) === defaults.offset.z}
                   title={t("gds.reset")}
                   aria-label={t("gds.reset")}
                   onclick={() =>
                     id &&
-                    defaults?.z_max !== undefined &&
-                    updateNumber(id, "z_max", defaults.z_max)}><RotateCcw size={14} /></button
+                    defaults?.offset?.z !== undefined &&
+                    updateOffset(id, "z", defaults.offset.z)}><RotateCcw size={14} /></button
                 >
               </div>
             </div>
+            <div class="property-field">
+              <label for="property-thickness">{t("gds.thickness")}</label>
+              <div class="slider-control">
+                <Slider
+                  value={thickness}
+                  min={minimumThickness}
+                  max={100}
+                  step={0.1}
+                  ariaLabel={t("gds.thickness")}
+                  onvaluechange={(value) => (id ? updateThickness(id, value) : undefined)}
+                />
+                <Input
+                  id="property-thickness"
+                  class="number-input z-number-input"
+                  type="number"
+                  value={thickness}
+                  min={minimumThickness}
+                  max={100}
+                  step={0.1}
+                  hideNumberControls
+                  onchange={(event) => id && updateThickness(id, Number(event.currentTarget.value))}
+                />
+                <button
+                  class="reset-button"
+                  disabled={defaults?.thickness === undefined || thickness === defaults.thickness}
+                  title={t("gds.reset")}
+                  aria-label={t("gds.reset")}
+                  onclick={() =>
+                    id &&
+                    defaults?.thickness !== undefined &&
+                    updateThickness(id, defaults.thickness)}><RotateCcw size={14} /></button
+                >
+              </div>
+            </div>
+            <div class="property-caption">{t("gds.boundingBox")}</div>
+            <table class="property-range-table">
+              <thead>
+                <tr>
+                  <th scope="col"></th>
+                  <th scope="col">{t("gds.minimum")}</th>
+                  <th scope="col">{t("gds.maximum")}</th>
+                  <th scope="col">{t("gds.size")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each rangeRows as row}
+                  <tr>
+                    <th scope="row">{row.axis}</th>
+                    <td>{row.min}</td>
+                    <td>{row.max}</td>
+                    <td>{row.size}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </section>
         </div>{:else if scene}<p class="empty">{t("gds.selectLayer")}</p>{:else}<p class="empty">
           {t("gds.noScene")}
@@ -1651,6 +1665,48 @@
     color: var(--text);
     font-size: 0.82rem;
     font-weight: 650;
+  }
+  .property-caption {
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 550;
+  }
+  .property-range-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .property-range-table th,
+  .property-range-table td {
+    padding: 3px 0 3px 10px;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+  .property-range-table th:first-child {
+    padding-left: 0;
+  }
+  .property-range-table thead th {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-align: right;
+  }
+  .property-range-table thead th:first-child {
+    text-align: left;
+  }
+  .property-range-table tbody th {
+    width: 22px;
+    color: var(--muted);
+    text-align: left;
+  }
+  .property-range-table td {
+    color: var(--text);
+    text-align: right;
+  }
+  .property-range-table td:last-child {
+    color: var(--muted);
   }
   .property-field {
     min-width: 0;

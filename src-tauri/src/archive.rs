@@ -18,7 +18,7 @@ use serde_json::Value;
 use crate::model::{ProjectDocument, SceneObject, SourceDocument};
 
 pub const ARCHIVE_FORMAT_VERSION: u32 = 1;
-pub const DOCUMENT_ARCHIVE_FORMAT_VERSION: u32 = 2;
+pub const DOCUMENT_ARCHIVE_FORMAT_VERSION: u32 = 3;
 pub const SCENE_JSON_NAME: &str = "scene.json";
 pub const RAW_GDS_DIR: &str = "gds";
 
@@ -55,7 +55,7 @@ pub fn read_scene_objects(file_path: &Path) -> anyhow::Result<Vec<SceneObject>> 
         .collect()
 }
 
-/// Write a version 2 `.gds3d` archive containing the editable project document.
+/// Write a version 3 `.gds3d` archive containing the editable project document.
 #[cfg(test)]
 pub fn write_project_archive(file_path: &Path, document: &ProjectDocument) -> anyhow::Result<()> {
     let path = normalize_output_path(file_path)?;
@@ -276,8 +276,6 @@ fn serialize_object(obj: &SceneObject) -> Value {
                 "bounds".to_owned(),
                 serde_json::to_value(&layer.bounds).unwrap_or(Value::Null),
             );
-            payload.insert("z_min".to_owned(), Value::from(layer.display.z_min));
-            payload.insert("z_max".to_owned(), Value::from(layer.display.z_max));
             payload.insert("color".to_owned(), Value::from(layer.display.color.clone()));
             payload.insert("opacity".to_owned(), Value::from(layer.display.opacity));
             payload.insert("visible".to_owned(), Value::from(layer.display.visible));
@@ -293,8 +291,6 @@ fn serialize_object(obj: &SceneObject) -> Value {
                 "bounds".to_owned(),
                 serde_json::to_value(&baseplate.bounds).unwrap_or(Value::Null),
             );
-            payload.insert("z_min".to_owned(), Value::from(baseplate.display.z_min));
-            payload.insert("z_max".to_owned(), Value::from(baseplate.display.z_max));
             payload.insert(
                 "color".to_owned(),
                 Value::from(baseplate.display.color.clone()),
@@ -718,8 +714,8 @@ mod tests {
         let mut document =
             ProjectDocument::from_gds(gds_path, &[selection]).expect("import project document");
         for layer in document.layer_views.values_mut() {
-            layer.display.offset_x = 12.5;
-            layer.display.offset_y = -7.25;
+            layer.display.offset.x = 12.5;
+            layer.display.offset.y = -7.25;
         }
         let mut expected_cell_ids = document.cells.keys().copied().collect::<Vec<_>>();
         expected_cell_ids.sort_by_key(|id| id.0);
@@ -740,7 +736,7 @@ mod tests {
             loaded
                 .layer_views
                 .values()
-                .all(|layer| layer.display.offset_x == 12.5 && layer.display.offset_y == -7.25)
+                .all(|layer| layer.display.offset.x == 12.5 && layer.display.offset.y == -7.25)
         );
         assert_eq!(
             loaded

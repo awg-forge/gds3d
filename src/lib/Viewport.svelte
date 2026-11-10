@@ -45,10 +45,8 @@
         color?: string;
         opacity?: number;
         visible?: boolean;
-        offset_x?: number;
-        offset_y?: number;
-        z_min?: number;
-        z_max?: number;
+        offset?: { x?: number; y?: number; z?: number };
+        thickness?: number;
       };
       polygons?: { points: number[][]; holes?: number[][][] }[];
       bounds?: { min_x: number; min_y: number; max_x: number; max_y: number };
@@ -70,8 +68,8 @@
     visible: boolean;
     offsetX: number;
     offsetY: number;
-    zMin: number;
-    zMax: number;
+    offsetZ: number;
+    thickness: number;
   };
   type ViewportDisplayEvent = {
     objectId: string;
@@ -79,10 +77,8 @@
       color?: string;
       opacity?: number;
       visible?: boolean;
-      offset_x?: number;
-      offset_y?: number;
-      z_min?: number;
-      z_max?: number;
+      offset?: { x?: number; y?: number; z?: number };
+      thickness?: number;
     };
   };
   type WorkerLayerInput = {
@@ -225,10 +221,10 @@
       color: display?.color ?? "#4c89c8",
       opacity: display?.opacity ?? 1,
       visible: display?.visible ?? true,
-      offsetX: display?.offset_x ?? 0,
-      offsetY: display?.offset_y ?? 0,
-      zMin: display?.z_min ?? 0,
-      zMax: display?.z_max ?? 1,
+      offsetX: display?.offset?.x ?? 0,
+      offsetY: display?.offset?.y ?? 0,
+      offsetZ: display?.offset?.z ?? 0,
+      thickness: display?.thickness ?? 1,
     };
   }
 
@@ -239,8 +235,8 @@
       visible,
       offsetX,
       offsetY,
-      zMin,
-      zMax,
+      offsetZ,
+      thickness,
     } = rendered.appearance;
     const color = Color3.FromHexString(colorValue);
     rendered.material.diffuseColor = color;
@@ -251,10 +247,10 @@
     rendered.material.needDepthPrePass = opacity < 1;
     rendered.mesh.renderingGroupId = opacity < 1 ? 1 : 0;
     rendered.mesh.setEnabled(visible);
-    const depth = Math.max(0.001, zMax - zMin);
+    const depth = Math.max(0.001, thickness);
     rendered.mesh.scaling.y = depth / rendered.baseDepth;
-    // GDS Y maps to world Z; worker meshes extend down from local Y=0, so their top belongs at zMax.
-    rendered.mesh.position.set(offsetX, zMax, offsetY);
+    // GDS Y maps to world Z; worker meshes extend down from local Y=0, so their top is offset.z + thickness.
+    rendered.mesh.position.set(offsetX, offsetZ + depth, offsetY);
   }
 
   function updateLayerAppearance(record: ViewportRecord, rendered: RenderedLayer) {
@@ -272,10 +268,10 @@
       color: update.color ?? rendered.appearance.color,
       opacity: update.opacity ?? rendered.appearance.opacity,
       visible: update.visible ?? rendered.appearance.visible,
-      offsetX: update.offset_x ?? rendered.appearance.offsetX,
-      offsetY: update.offset_y ?? rendered.appearance.offsetY,
-      zMin: update.z_min ?? rendered.appearance.zMin,
-      zMax: update.z_max ?? rendered.appearance.zMax,
+      offsetX: update.offset?.x ?? rendered.appearance.offsetX,
+      offsetY: update.offset?.y ?? rendered.appearance.offsetY,
+      offsetZ: update.offset?.z ?? rendered.appearance.offsetZ,
+      thickness: update.thickness ?? rendered.appearance.thickness,
     };
     applyLayerAppearance(rendered);
   }
@@ -399,10 +395,7 @@
               },
             ]
           : []);
-      const depth = Math.max(
-        0.001,
-        (payload?.display?.z_max ?? 1) - (payload?.display?.z_min ?? 0),
-      );
+      const depth = Math.max(0.001, payload?.display?.thickness ?? 1);
       return { id, polygons: clonePolygonsForWorker(polygons), depth };
     });
 

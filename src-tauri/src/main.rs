@@ -358,16 +358,22 @@ struct RenderObjectOccurrences {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct OffsetUpdate {
+    x: Option<f32>,
+    y: Option<f32>,
+    z: Option<f32>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DisplayUpdate {
     object_id: String,
     name: Option<String>,
     color: Option<String>,
     opacity: Option<f32>,
     visible: Option<bool>,
-    offset_x: Option<f32>,
-    offset_y: Option<f32>,
-    z_min: Option<f32>,
-    z_max: Option<f32>,
+    offset: Option<OffsetUpdate>,
+    thickness: Option<f32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -377,8 +383,8 @@ struct BaseplateTarget {
     cell_name: String,
 }
 
-const MINIMUM_Z_SPAN: f32 = 1.0;
-const Z_SPAN_TOLERANCE: f32 = 0.0001;
+const MINIMUM_THICKNESS: f32 = 1.0;
+const THICKNESS_TOLERANCE: f32 = 0.0001;
 
 fn snapshot(session: &EditorSession) -> Result<SceneSnapshot, String> {
     let render_scene = session
@@ -503,10 +509,11 @@ fn update_object_display(
         .cloned()
         .ok_or_else(|| "scene object not found".to_owned())?;
     let mut after = before.clone();
-    let z_min = update.z_min.unwrap_or(after.z_min);
-    let z_max = update.z_max.unwrap_or(after.z_max);
-    if z_max - z_min < MINIMUM_Z_SPAN - Z_SPAN_TOLERANCE {
-        return Err("Z range must be at least 1".to_owned());
+    if let Some(thickness) = update.thickness {
+        if thickness < MINIMUM_THICKNESS - THICKNESS_TOLERANCE {
+            return Err("thickness must be at least 1".to_owned());
+        }
+        after.thickness = thickness;
     }
     if let Some(name) = update.name {
         let name = name.trim();
@@ -524,17 +531,16 @@ fn update_object_display(
     if let Some(visible) = update.visible {
         after.visible = visible;
     }
-    if let Some(offset_x) = update.offset_x {
-        after.offset_x = offset_x;
-    }
-    if let Some(offset_y) = update.offset_y {
-        after.offset_y = offset_y;
-    }
-    if update.z_min.is_some() {
-        after.z_min = z_min;
-    }
-    if update.z_max.is_some() {
-        after.z_max = z_max;
+    if let Some(offset) = update.offset {
+        if let Some(x) = offset.x {
+            after.offset.x = x;
+        }
+        if let Some(y) = offset.y {
+            after.offset.y = y;
+        }
+        if let Some(z) = offset.z {
+            after.offset.z = z;
+        }
     }
     if before == after {
         return Ok(scene.status());

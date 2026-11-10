@@ -93,10 +93,8 @@ export function updateObjectDisplay(update: {
   color?: string;
   opacity?: number;
   visible?: boolean;
-  offsetX?: number;
-  offsetY?: number;
-  zMin?: number;
-  zMax?: number;
+  offset?: { x?: number; y?: number; z?: number };
+  thickness?: number;
 }): Promise<EditorStatus> {
   return invoke("update_object_display", { update });
 }

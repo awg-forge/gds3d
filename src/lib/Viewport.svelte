@@ -147,7 +147,6 @@
     beta: homeBeta,
     radius: 100,
   };
-  const homePanningSensibility = 3;
   let ambientLight: HemisphericLight | null = null;
   let keyLight: DirectionalLight | null = null;
   let requestEngineResize: (() => void) | null = null;
@@ -798,9 +797,17 @@
     activeCamera.movement.input.setInteraction("pointer", { button: 0 }, "rotate");
     activeCamera.movement.input.setInteraction("pointer", { button: 2 }, "pan");
     activeCamera.wheelDeltaPercentage = 0.01;
-    activeCamera.panningSensibility = homePanningSensibility;
+    // CAD-style pan: no glide, and one CSS pixel of drag moves the target plane one pixel.
+    activeCamera.panningInertia = 0;
     activeCamera.lowerRadiusLimit = 0.01;
     activeCamera.upperRadiusLimit = Number.MAX_SAFE_INTEGER;
+    const updatePanningSensibility = () => {
+      const worldPerPixel =
+        (2 * activeCamera.radius * Math.tan(activeCamera.fov / 2)) /
+        Math.max(viewportCanvas.clientHeight, 1);
+      activeCamera.panningSensibility = 1 / worldPerPixel;
+    };
+    updatePanningSensibility();
     viewportCanvas.addEventListener("contextmenu", preventContextMenu);
     viewportCanvas.addEventListener("wheel", preventPageZoom, { passive: false });
     viewportCanvas.addEventListener("pointerdown", stopCameraAnimation);
@@ -835,8 +842,7 @@
     window.addEventListener("gds3d-viewport-display", updateLayerAppearanceFromEvent);
     configureLighting();
     const panningObserver = scene.onBeforeRenderObservable.add(() => {
-      const radiusRatio = Math.max(activeCamera.radius / homeCameraState.radius, 0.0001);
-      activeCamera.panningSensibility = homePanningSensibility / radiusRatio;
+      updatePanningSensibility();
       activeCamera.minZ = Math.max(0.01, activeCamera.radius / 1_000);
       activeCamera.maxZ = Math.max(10_000, activeCamera.radius * 4);
       if (keyLight) {

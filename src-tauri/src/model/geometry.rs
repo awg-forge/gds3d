@@ -1,5 +1,7 @@
 use super::*;
 
+use std::collections::HashMap;
+
 use gdsii::I32;
 use gdsii::parser::{Path as GdsPath, Strans};
 use gdsii::types::GdsPoint;
@@ -394,6 +396,7 @@ pub(super) fn union_layer_polygons(polygons: Vec<Polygon2d>) -> Vec<Polygon2d> {
         }
     }
 
+    snap_contours(&mut contours);
     contours
         .simplify_shape(FillRule::NonZero)
         .into_iter()
@@ -410,6 +413,53 @@ pub(super) fn union_layer_polygons(polygons: Vec<Polygon2d>) -> Vec<Polygon2d> {
             Some(polygon)
         })
         .collect()
+}
+
+/// Collapse near-identical coordinates onto shared values.
+///
+/// GDS vertex coordinates are scaled into `f32`, so edges that should coincide can
+/// differ by a few ulps after instance transforms. i_overlay 9 preserves those tiny
+/// gaps and emits sliver islands; snapping coordinates within one magnitude's ulp
+/// closes them without moving unrelated geometry.
+fn snap_contours(contours: &mut [Vec<[f32; 2]>]) {
+    let max_abs = contours
+        .iter()
+        .flatten()
+        .map(|point| point[0].abs().max(point[1].abs()))
+        .fold(0.0, f32::max);
+    let tolerance = max_abs * f32::EPSILON;
+    if !tolerance.is_finite() || tolerance == 0.0 {
+        return;
+    }
+
+    let xs = snapped_values(contours.iter().flatten().map(|point| point[0]), tolerance);
+    let ys = snapped_values(contours.iter().flatten().map(|point| point[1]), tolerance);
+    for point in contours.iter_mut().flatten() {
+        point[0] = xs[&point[0].to_bits()];
+        point[1] = ys[&point[1].to_bits()];
+    }
+}
+
+fn snapped_values(values: impl Iterator<Item = f32>, tolerance: f32) -> HashMap<u32, f32> {
+    let mut sorted = values.collect::<Vec<_>>();
+    sorted.sort_by(f32::total_cmp);
+    let mut replacements = HashMap::with_capacity(sorted.len());
+    let mut representative = sorted
+        .iter()
+        .copied()
+        .find(|value| value.is_finite())
+        .unwrap_or(0.0);
+    for value in sorted {
+        if !value.is_finite() {
+            replacements.insert(value.to_bits(), value);
+            continue;
+        }
+        if (value - representative).abs() > tolerance {
+            representative = value;
+        }
+        replacements.insert(value.to_bits(), representative);
+    }
+    replacements
 }
 
 fn orient_contour(contour: &mut [[f32; 2]], counterclockwise: bool) {

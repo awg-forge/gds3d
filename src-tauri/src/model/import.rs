@@ -419,8 +419,8 @@ mod tests {
             .find(|layer| layer.selection.layer == 4 && layer.selection.datatype == 1)
             .expect("AWG L4/1 layer");
         assert_eq!(
-            layer.polygon_count, 2,
-            "expected overlapping AWG geometry to collapse to its two disconnected islands"
+            layer.polygon_count, 1,
+            "expected near-touching AWG geometry to collapse into one connected island"
         );
 
         let objects = import_gds_layers(Path::new("../models/AWG_0.8nmCS_16CH_0nmOS.gds"))
@@ -434,7 +434,7 @@ mod tests {
                 _ => None,
             })
             .expect("imported AWG L4/1 layer");
-        assert_eq!(imported_layer.polygons.len(), 2);
+        assert_eq!(imported_layer.polygons.len(), 1);
     }
 
     #[test]
